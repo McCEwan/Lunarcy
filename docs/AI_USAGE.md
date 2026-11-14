@@ -78,6 +78,33 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
   - The `/evaluate` sunlight and Earth-visibility percentages still ignore terrain (only the 3D readout uses the skyline). They can be wired to the horizon profile once the terrain is real.
   - The Sun is modelled as a point for lighting (the light switches at the Sun's centre), so partial-disc sunrise and sunset are approximate.
 
+### 2026-11-14 · Session 4: real LOLA terrain (two levels), Horizons refinement, Sun & Earth on the globe
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** "two-level estimate with the real elevation method, the detailed terrain button, the Horizons refinement, and Sun and Earth models in both levels". The AI asked four design questions first. Answers: globe + 3D view; LDEM_64 for the global level; replace the synthetic elevation/slope too (temperature stays a placeholder); make all numbers terrain-aware, with flat values alongside.
+- **What the AI did:**
+  - Checked what NASA PDS actually provides (file list, sizes, and that the server supports HTTP range and multi-range requests) before designing anything. It also confirmed by checking all 1,096 layers that Moon Trek's tile service has no numeric elevation layer, and that Horizons doesn't provide terrain.
+  - `scripts/fetch_lola.py` (resumable LDEM_64 download) and `api/lola.py`: a memory-mapped global grid plus on-demand ~30 m patches that read only the needed bytes from 0.5–2 GB files (LDEM_1024 tiles, or LDEM_75S/N_30M near the poles), cached on disk.
+  - Real elevation and slope in `terrain.py`; terrain skylines from LOLA applied to sunlight %, power, comms, landing windows and rise/set times; the site's LOLA elevation sent to Horizons as its altitude; a new `/sky/subpoints` query (Horizons sub-solar and sub-Earth points) so the globe is lit by the real Sun with Sun and Earth markers.
+  - 3D view: real terrain at either level, its own detail button, and an invisible "skyline occluder" ring so distant mountains cast shadows on the 20 km patch.
+  - Fixed two frontend issues found while testing: browsers reusing stale JS files (the server now sends `Cache-Control: no-cache`), and CSS overriding the `hidden` attribute on buttons.
+- **Checks the AI ran on its own output:**
+  - LDEM_64 at IM-1: 2,602 m, against NASA's published ~2,579 m. Apollo 11: −1,926 m (known ≈ −1.9 km).
+  - Detailed patches vs the global grid: correlation 0.997–0.999, mean difference under 3 m. The south-pole map and the regular tiles agree at IM-1 (2,594 vs 2,595 m), confirming the undocumented polar orientation.
+  - IM-1 detailed slope is 13.3° over 60 m, which fails Nova-C's 10° limit (published site slope ≈ 12°; Odysseus tipped over). The global grid alone gave 9.3°.
+  - Shackleton crater floor: 0% sunlight and 0% Earth with terrain, against 100% sun on a flat horizon (a known permanently shadowed region). Shackleton rim ridge: 99.7% sunlight.
+  - In 3D, a fake distant 30° skyline darkens the sunlit site (brightness 65.8 → 2.6), so the occluder works. The globe's lit hemisphere matches the Horizons sub-solar point.
+  - The Horizons altitude refinement was measured honestly: it changes Sun/Earth angles by under 0.001°. Elevation matters through the skyline, e.g. a high rim sees over the curve of the Moon (Earth 47% vs 40% flat).
+  - Tests: 59 offline, plus 17 live tests against NASA PDS and Horizons (`RUN_LIVE=1`).
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:**
+  - Temperature is still a placeholder (Diviner not added).
+  - Slopes are terrain-scale (60 m or ~950 m baselines), not boulder-scale.
+  - The Sun is treated as a point, so partial shadowing at a rim isn't modelled. The 3D occluder is exact only at the landing site itself.
+  - The first detailed fetch needs internet and takes 3–7 s per site. Planned-site coordinates are approximate, so their "detailed" terrain is of the approximate point.
+  - **Overlap with teammate:** at the user's request, `terrain.py` and `build_grids.py` were changed, the files the teammate was working in. Needs a conversation before merging.
+
 ---
 
 ## Entry template

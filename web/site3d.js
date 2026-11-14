@@ -41,11 +41,11 @@ export async function open3dView(opts) {
 }
 
 class SiteView {
-  constructor({ title, lat, lon, result, landed }) {
-    Object.assign(this, { title, lat, lon, result, landed });
+  constructor({ title, lat, lon, result, landed, level = 'global', initialT = 0, onRequestDetail = null }) {
+    Object.assign(this, { title, lat, lon, result, landed, level, onRequestDetail });
     this.series = result.sky;
     this.power = result.power_w.map((p) => p.w);
-    this.t = 0;                 // fractional index into the hourly series
+    this.t = Math.min(initialT, this.series.length - 1);   // fractional index into the hourly series
     this.playing = false;
     this.speed = 6;             // simulated hours per real second
     this.exaggeration = 1;
@@ -63,10 +63,19 @@ class SiteView {
     document.getElementById('v3d-sub').textContent =
       `${fmtLat(this.lat)}, ${fmtLon(this.lon)} · ${this.landed ? 'timelapse from landing to mission end' : 'timelapse over the next lunar day'}`;
     this.setNote('Loading terrain…');
+    const detailed = this.level === 'detailed';
+    document.getElementById('v3d-level').innerHTML = detailed
+      ? '<span class="badge pass">Detailed terrain</span>'
+      : '<span class="badge level">Global estimate</span>';
+    const detailBtn = document.getElementById('v3d-detail');
+    detailBtn.hidden = detailed || !this.onRequestDetail;
+    detailBtn.disabled = false;
+    detailBtn.textContent = 'Get detailed terrain';
 
-    const q = `lat=${this.lat}&lon=${this.lon}`;
+    const q = `lat=${this.lat}&lon=${this.lon}&level=${this.level}`;
+    const n = detailed ? 2 * PATCH_N - 1 : PATCH_N;   // ~39 m vertices for detailed data
     const [patch, horizon] = await Promise.all([
-      fetch(`/terrain/patch?${q}&size_km=${PATCH_KM}&n=${PATCH_N}`).then((r) => r.json()),
+      fetch(`/terrain/patch?${q}&size_km=${PATCH_KM}&n=${n}`).then((r) => r.json()),
       fetch(`/terrain/horizon?${q}`).then((r) => r.json()),
     ]);
     if (active !== this) return;  // closed while loading
@@ -75,6 +84,7 @@ class SiteView {
 
     this.buildRenderer();
     this.buildTerrain();
+    this.buildSkylineOccluder();
     this.buildSky();
     this.bindControls();
     this.setView('overview');
@@ -149,8 +159,8 @@ class SiteView {
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.set(4096, 4096);
     const s = this.sunLight.shadow.camera;
-    s.left = s.bottom = -size * 0.75;
-    s.right = s.top = size * 0.75;
+    s.left = s.bottom = -size * 0.8;          // covers the patch and the skyline occluder ring
+    s.right = s.top = size * 0.8;
     s.near = 1;
     s.far = 200000;
     this.sunLight.shadow.bias = -0.0003;
@@ -172,6 +182,31 @@ class SiteView {
     pos.needsUpdate = true;
     this.terrainGeo.computeVertexNormals();
     this.terrainGeo.computeBoundingSphere();
+  }
+
+  // Terrain beyond the 20 km patch (distant mountains, crater rims) still blocks the Sun.
+  // An invisible ring just outside the patch, as tall as the real skyline seen from the
+  // site in each direction, casts those shadows: exact at the landing site, approximate
+  // elsewhere on the patch.
+  buildSkylineOccluder() {
+    const R = this.patch.size_m * 0.73;      // just beyond the patch corners
+    const bottom = -8000;
+    const pos = [];
+    for (let i = 0; i < 360; i++) {
+      const a0 = i * D2R, a1 = (i + 1) * D2R;
+      const top0 = 2 + R * Math.tan(Math.min(this.skyline[i], 80) * D2R);
+      const top1 = 2 + R * Math.tan(Math.min(this.skyline[(i + 1) % 360], 80) * D2R);
+      const p = (a, y) => [R * Math.sin(a), y, -R * Math.cos(a)];
+      pos.push(...p(a0, bottom), ...p(a1, bottom), ...p(a1, top1));
+      pos.push(...p(a0, bottom), ...p(a1, top1), ...p(a0, top0));
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    this.occluder = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      colorWrite: false, depthWrite: false, side: THREE.DoubleSide,   // shadows only, never drawn
+    }));
+    this.occluder.castShadow = true;
+    this.scene.add(this.occluder);
   }
 
   buildSky() {
@@ -233,13 +268,20 @@ class SiteView {
     const $ = (id) => document.getElementById(id);
     const scrub = $('v3d-scrub');
     scrub.max = String(this.series.length - 1);
-    scrub.value = '0';
+    scrub.value = String(this.t);   // reopening at a new terrain level keeps the moment
 
     const on = (el, ev, fn) => { el.addEventListener(ev, fn); this.disposers.push(() => el.removeEventListener(ev, fn)); };
     on($('v3d-play'), 'click', () => this.togglePlay());
     on($('v3d-speed'), 'change', (e) => { this.speed = Number(e.target.value); });
     on(scrub, 'input', (e) => { this.t = Number(e.target.value); this.update(); });
     on($('v3d-close'), 'click', () => this.close());
+    on($('v3d-detail'), 'click', (e) => {
+      if (!this.onRequestDetail) return;
+      e.target.disabled = true;
+      e.target.textContent = 'Downloading detailed LOLA terrain…';
+      this.playing = false;
+      this.onRequestDetail(this.t);   // the app re-evaluates and reopens this view at the same moment
+    });
     on($('v3d-exag'), 'change', (e) => { this.exaggeration = e.target.checked ? 2 : 1; this.applyHeights(); this.setView(this.view); });
     on($('v3d-enlarge'), 'change', (e) => { this.enlarge = e.target.checked; this.update(); });
     on($('v3d-views'), 'click', (e) => { const v = e.target.dataset?.view; if (v) this.setView(v); });

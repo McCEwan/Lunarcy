@@ -40,7 +40,7 @@ def test_horizons_falls_back_when_offline(monkeypatch, tmp_path):
 def test_horizons_caches_to_disk(monkeypatch, tmp_path):
     calls = []
 
-    def fake_fetch(body, lat, lon, start, step_min, n):
+    def fake_fetch(body, lat, lon, alt_m, start, step_min, n):
         calls.append(body)
         return [0.0] * n, [float(body == "10")] * n
 
@@ -54,6 +54,36 @@ def test_horizons_caches_to_disk(monkeypatch, tmp_path):
     fresh = HorizonsEphemeris(cache_dir=tmp_path)       # new instance: memory cache empty
     monkeypatch.setattr(fresh, "_fetch", lambda *a: pytest.fail("should come from disk cache"))
     assert fresh.sky(10, 20, times).sun_el[0] == 1.0
+
+
+def test_site_altitude_is_sent_to_horizons_and_keyed_in_cache(monkeypatch, tmp_path):
+    seen = []
+
+    def fake_fetch(body, lat, lon, alt_m, start, step_min, n):
+        seen.append(alt_m)
+        return [0.0] * n, [1.0] * n
+
+    eph = HorizonsEphemeris(cache_dir=tmp_path)
+    monkeypatch.setattr(eph, "_fetch", fake_fetch)
+    times = ephemeris.time_grid(np.datetime64("2027-03-01"), 1)
+    s = eph.sky(10, 20, times, alt_m=2594)
+    eph.sky(10, 20, times, alt_m=0)
+    assert 2590.0 in seen and 0.0 in seen          # rounded to 10 m, separate cache entries
+    assert "altitude +2590 m" in s.source
+    p = ephemeris.horizons_params("10", 1.0, 2.0, np.datetime64("2027-03-01T00:00"),
+                                  np.datetime64("2027-03-01T01:00"), 60, alt_km=2.594)
+    assert p["SITE_COORD"] == "'2.0,1.0,2.594'"
+
+
+def test_parse_subpoints_wraps_longitudes():
+    sample = """
+$$SOE
+ 2026-Nov-21 00:00, , , 352.933282,  -4.630263,   41.450414,  -1.541521,
+$$EOE
+"""
+    got = ephemeris.parse_horizons_subpoints(sample)
+    assert got["sub_earth"] == {"lat": -4.6303, "lon": -7.0667}
+    assert got["sub_solar"] == {"lat": -1.5415, "lon": 41.4504}
 
 
 def test_analytic_azimuth_points_east_at_sunrise():

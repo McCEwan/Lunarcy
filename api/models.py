@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -17,6 +18,7 @@ class EvaluateRequest(BaseModel):
     payload_kg: float | None = Field(default=None, ge=0)
     landing_date: date | None = None
     landing_time: datetime | None = None  # UTC; wins over landing_date when both are sent
+    terrain_level: Literal["global", "detailed"] = "global"
 
     @field_validator("landing_date")
     @classmethod
@@ -39,10 +41,13 @@ class EvaluateRequest(BaseModel):
 
 class SiteStats(BaseModel):
     slope_deg: float | None
+    slope_baseline_m: float | None      # distance the slope was measured over
     elevation_m: float | None
     temp_range_k: list[float] | None
-    sunlight_pct: float
-    earth_visible_pct: float
+    sunlight_pct: float                 # Sun above the terrain horizon
+    earth_visible_pct: float            # Earth above the terrain horizon
+    sunlight_pct_flat: float            # same, ignoring terrain (smooth-sphere horizon)
+    earth_visible_pct_flat: float
 
 
 class SkyPoint(BaseModel):
@@ -51,6 +56,17 @@ class SkyPoint(BaseModel):
     sun_az: float      # degrees from north, through east
     earth_el: float
     earth_az: float
+    sun_visible: bool  # above the terrain horizon
+    earth_visible: bool
+
+
+class TerrainInfo(BaseModel):
+    level: Literal["global", "detailed"]
+    heights_source: str
+    resolution_m: float
+    site_elevation_m: float             # also sent to Horizons as the site altitude
+    skyline_max_deg: float              # highest point of the terrain horizon
+    detailed_cached: bool               # detailed terrain already downloaded for this site
 
 
 class Events(BaseModel):
@@ -88,6 +104,7 @@ class Check(BaseModel):
 class EvaluateResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     site: SiteStats
+    terrain: TerrainInfo
     sky: list[SkyPoint]
     events: Events
     power_w: list[PowerPoint]

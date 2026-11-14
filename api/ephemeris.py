@@ -65,23 +65,64 @@ class HorizonsEphemeris:
         if cache_dir:
             cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def sky(self, lat: float, lon: float, times: np.ndarray) -> Sky:
+    def sky(self, lat: float, lon: float, times: np.ndarray, alt_m: float = 0.0) -> Sky:
+        """Sun/Earth az/el at the site. `alt_m` is the site's LOLA elevation above the
+        1737.4 km sphere Horizons uses (the 'Horizons refinement'); rounded to 10 m."""
         lat, lon = round(float(lat), 3), round(float(lon), 3)
+        alt_m = float(round(alt_m / 10.0) * 10.0)
         try:
-            data = self._cached_or_fetch(lat, lon, times)
+            data = self._cached_or_fetch(lat, lon, alt_m, times)
         except Exception as exc:  # network down, Horizons error, bad parse...
             log.warning("Horizons failed (%s); using analytic fallback", exc)
             s = self.fallback.sky(lat, lon, times)
             return Sky(s.sun_el, s.sun_az, s.earth_el, s.earth_az, FALLBACK_SOURCE)
+        source = HORIZONS_SOURCE if not alt_m else f"{HORIZONS_SOURCE}, site altitude {alt_m:+.0f} m (LOLA)"
         return Sky(
             np.asarray(data["sun_el"]), np.asarray(data["sun_az"]),
             np.asarray(data["earth_el"]), np.asarray(data["earth_az"]),
-            HORIZONS_SOURCE,
+            source,
         )
 
-    def _cached_or_fetch(self, lat: float, lon: float, times: np.ndarray) -> dict:
+    def subpoints(self, when: np.datetime64) -> dict:
+        """Where on the Moon the Sun and Earth are directly overhead at `when` (UTC, hour)."""
+        t = np.datetime64(when, "h")
+        key = f"subpoints-{t}"
+        if key in self._memory:
+            return self._memory[key]
+        path = self.cache_dir / f"{key.replace(':', '')}.json" if self.cache_dir else None
+        try:
+            if path and path.exists():
+                data = json.loads(path.read_text())
+            else:
+                params = {
+                    "format": "json", "COMMAND": "'301'", "OBJ_DATA": "'NO'", "MAKE_EPHEM": "'YES'",
+                    "EPHEM_TYPE": "'OBSERVER'", "CENTER": "'500@399'",   # the Moon seen from Earth's centre
+                    "START_TIME": f"'{_fmt_time(t)}'", "STOP_TIME": f"'{_fmt_time(t + np.timedelta64(1, 'h'))}'",
+                    "STEP_SIZE": "'60m'", "QUANTITIES": "'14,15'", "ANG_FORMAT": "'DEG'", "CSV_FORMAT": "'YES'",
+                }
+                req = urllib.request.Request(HORIZONS_URL + "?" + urllib.parse.urlencode(params),
+                                             headers={"User-Agent": "lunar-planner-hackathon"})
+                with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                    payload = json.load(resp)
+                if "error" in payload:
+                    raise RuntimeError(payload["error"])
+                data = parse_horizons_subpoints(payload["result"])
+                data["source"] = "NASA/JPL Horizons System (sub-solar and sub-Earth points on the Moon)"
+                if path:
+                    path.write_text(json.dumps(data))
+        except Exception as exc:
+            log.warning("Horizons subpoints failed (%s); using analytic fallback", exc)
+            data = self.fallback.subpoints(t)
+            data["source"] = FALLBACK_SOURCE
+        data["time"] = str(t.astype("datetime64[m]")) + "Z"
+        self._memory[key] = data
+        return data
+
+    def _cached_or_fetch(self, lat: float, lon: float, alt_m: float, times: np.ndarray) -> dict:
         start, step_min, n = _grid_params(times)
-        key = hashlib.sha1(f"{lat},{lon},{start},{step_min},{n}".encode()).hexdigest()[:16]
+        # alt 0 keeps the original key so earlier cache files stay valid
+        alt_part = f",{alt_m:.0f}" if alt_m else ""
+        key = hashlib.sha1(f"{lat},{lon},{start},{step_min},{n}{alt_part}".encode()).hexdigest()[:16]
         if key in self._memory:
             return self._memory[key]
         path = self.cache_dir / f"{key}.json" if self.cache_dir else None
@@ -89,8 +130,8 @@ class HorizonsEphemeris:
             data = json.loads(path.read_text())
         else:
             with ThreadPoolExecutor(max_workers=2) as pool:
-                sun_f = pool.submit(self._fetch, SUN, lat, lon, start, step_min, n)
-                earth_f = pool.submit(self._fetch, EARTH, lat, lon, start, step_min, n)
+                sun_f = pool.submit(self._fetch, SUN, lat, lon, alt_m, start, step_min, n)
+                earth_f = pool.submit(self._fetch, EARTH, lat, lon, alt_m, start, step_min, n)
                 (sun_az, sun_el), (earth_az, earth_el) = sun_f.result(), earth_f.result()
             data = {"sun_el": sun_el, "sun_az": sun_az, "earth_el": earth_el, "earth_az": earth_az}
             if path:
@@ -98,9 +139,9 @@ class HorizonsEphemeris:
         self._memory[key] = data
         return data
 
-    def _fetch(self, body: str, lat: float, lon: float, start: np.datetime64, step_min: int, n: int):
+    def _fetch(self, body: str, lat: float, lon: float, alt_m: float, start: np.datetime64, step_min: int, n: int):
         stop = start + np.timedelta64(step_min * (n - 1), "m")
-        params = horizons_params(body, lat, lon, start, stop, step_min)
+        params = horizons_params(body, lat, lon, start, stop, step_min, alt_km=alt_m / 1000.0)
         url = HORIZONS_URL + "?" + urllib.parse.urlencode(params)
         req = urllib.request.Request(url, headers={"User-Agent": "lunar-planner-hackathon"})
         with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
@@ -113,7 +154,8 @@ class HorizonsEphemeris:
         return [round(x, 3) for x in az], [round(x, 3) for x in el]
 
 
-def horizons_params(body: str, lat: float, lon: float, start, stop, step_min: int, fmt: str = "json") -> dict:
+def horizons_params(body: str, lat: float, lon: float, start, stop, step_min: int,
+                    fmt: str = "json", alt_km: float = 0.0) -> dict:
     """Query parameters for a Horizons observer table of apparent az/el from the Moon."""
     return {
         "format": fmt,
@@ -123,13 +165,27 @@ def horizons_params(body: str, lat: float, lon: float, start, stop, step_min: in
         "EPHEM_TYPE": "'OBSERVER'",
         "CENTER": "'coord@301'",           # 301 = the Moon
         "COORD_TYPE": "'GEODETIC'",
-        "SITE_COORD": f"'{lon},{lat},0'",   # east longitude, latitude, altitude (km)
+        # east longitude, latitude, altitude (km above the 1737.4 km sphere)
+        "SITE_COORD": f"'{lon},{lat},{alt_km:.3f}'",
         "START_TIME": f"'{_fmt_time(start)}'",
         "STOP_TIME": f"'{_fmt_time(stop)}'",
         "STEP_SIZE": f"'{step_min}m'",
         "QUANTITIES": "'4'",                 # apparent azimuth and elevation
         "ANG_FORMAT": "'DEG'",
         "CSV_FORMAT": "'YES'",
+    }
+
+
+def parse_horizons_subpoints(result: str) -> dict:
+    """First row of a QUANTITIES='14,15' table: sub-observer (Earth) and sub-solar points."""
+    body = result[result.index("$$SOE") + 5 : result.index("$$EOE")]
+    first = body.strip().splitlines()[0]
+    nums = [float(f) for f in (x.strip() for x in first.split(",")[1:]) if _is_number(f)]
+    e_lon, e_lat, s_lon, s_lat = nums[-4:]
+    wrap = lambda v: round((v + 180.0) % 360.0 - 180.0, 4)  # noqa: E731  (0-360 E -> -180..180)
+    return {
+        "sub_earth": {"lat": round(e_lat, 4), "lon": wrap(e_lon)},
+        "sub_solar": {"lat": round(s_lat, 4), "lon": wrap(s_lon)},
     }
 
 
@@ -174,20 +230,35 @@ J2000 = np.datetime64("2000-01-01T12:00:00", "s")
 
 
 class AnalyticEphemeris:
-    def sky(self, lat: float, lon: float, times: np.ndarray) -> Sky:
-        d_sun = (times - NEW_MOON_EPOCH) / np.timedelta64(1, "D")
-        phase = (d_sun / SYNODIC_DAYS) % 1.0
-        # New moon: Sun over the far side (180°). Full moon: over the near side (0°).
-        sub_sun_lon = 180.0 - 360.0 * phase
-        sub_sun_lat = 1.54 * np.sin(2 * np.pi * d_sun / ECLIPSE_YEAR_DAYS)
-
-        d = (times - J2000) / np.timedelta64(1, "D")
-        sub_earth_lon = 7.9 * np.sin(2 * np.pi * d / ANOMALISTIC_DAYS)
-        sub_earth_lat = 6.7 * np.sin(2 * np.pi * d / DRACONIC_DAYS)
-
+    def sky(self, lat: float, lon: float, times: np.ndarray, alt_m: float = 0.0) -> Sky:
+        # alt_m is accepted for interface parity; this rough model ignores it.
+        (sub_sun_lat, sub_sun_lon), (sub_earth_lat, sub_earth_lon) = _analytic_subpoints(times)
         sun_az, sun_el = _azel(lat, lon, sub_sun_lat, sub_sun_lon)
         earth_az, earth_el = _azel(lat, lon, sub_earth_lat, sub_earth_lon)
         return Sky(sun_el, sun_az, earth_el, earth_az, ANALYTIC_SOURCE)
+
+    def subpoints(self, when: np.datetime64) -> dict:
+        t = np.datetime64(when, "h")
+        (s_lat, s_lon), (e_lat, e_lon) = _analytic_subpoints(np.array([t]).astype("datetime64[s]"))
+        wrap = lambda v: round(float((v + 180.0) % 360.0 - 180.0), 4)  # noqa: E731
+        return {
+            "sub_solar": {"lat": round(float(s_lat[0]), 4), "lon": wrap(s_lon[0])},
+            "sub_earth": {"lat": round(float(e_lat[0]), 4), "lon": wrap(e_lon[0])},
+            "source": ANALYTIC_SOURCE,
+            "time": str(t.astype("datetime64[m]")) + "Z",
+        }
+
+
+def _analytic_subpoints(times: np.ndarray):
+    d_sun = (times - NEW_MOON_EPOCH) / np.timedelta64(1, "D")
+    phase = (d_sun / SYNODIC_DAYS) % 1.0
+    # New moon: Sun over the far side (180°). Full moon: over the near side (0°).
+    sub_sun_lon = 180.0 - 360.0 * phase
+    sub_sun_lat = 1.54 * np.sin(2 * np.pi * d_sun / ECLIPSE_YEAR_DAYS)
+    d = (times - J2000) / np.timedelta64(1, "D")
+    sub_earth_lon = 7.9 * np.sin(2 * np.pi * d / ANOMALISTIC_DAYS)
+    sub_earth_lat = 6.7 * np.sin(2 * np.pi * d / DRACONIC_DAYS)
+    return (sub_sun_lat, sub_sun_lon), (sub_earth_lat, sub_earth_lon)
 
 
 def _unit(lat_deg, lon_deg) -> np.ndarray:

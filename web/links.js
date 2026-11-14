@@ -35,8 +35,9 @@ export function moontrekUrl(lat, lon, zoom = 9) {
 }
 
 // JPL Horizons: the raw az/el table the backend uses, as plain text, for a body
-// ('10' = Sun, '399' = Earth) seen from this spot on the Moon.
-export function horizonsUrl(lat, lon, body, startIso, days = 30) {
+// ('10' = Sun, '399' = Earth) seen from this spot on the Moon, at the site's
+// LOLA elevation (km above the 1737.4 km sphere).
+export function horizonsUrl(lat, lon, body, startIso, days = 30, altKm = 0) {
   const start = new Date(startIso);
   const stop = new Date(start.getTime() + days * 86400e3);
   const fmt = (d) => d.toISOString().slice(0, 16).replace('T', ' ');
@@ -48,7 +49,7 @@ export function horizonsUrl(lat, lon, body, startIso, days = 30) {
     EPHEM_TYPE: "'OBSERVER'",
     CENTER: "'coord@301'",
     COORD_TYPE: "'GEODETIC'",
-    SITE_COORD: `'${lon.toFixed(3)},${lat.toFixed(3)},0'`,
+    SITE_COORD: `'${lon.toFixed(3)},${lat.toFixed(3)},${altKm.toFixed(3)}'`,
     START_TIME: `'${fmt(start)}'`,
     STOP_TIME: `'${fmt(stop)}'`,
     STEP_SIZE: "'60m'",

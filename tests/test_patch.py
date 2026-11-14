@@ -67,7 +67,9 @@ def test_patch_endpoint():
     r = client.get("/terrain/patch", params={"lat": -80.13, "lon": 1.44, "size_km": 10, "n": 64})
     assert r.status_code == 200
     body = r.json()
-    assert len(body["heights"]) == 64 * 64 and "PLACEHOLDER" in body["source"]
+    assert len(body["heights"]) == 64 * 64
+    # Real LOLA if data/lola/ldem_64.img is present, otherwise the labelled placeholder.
+    assert "LOLA" in body["source"] or "PLACEHOLDER" in body["source"]
 
 
 def test_horizon_endpoint():

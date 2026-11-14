@@ -38,12 +38,17 @@ def evaluate(
     payload_kg: float | None = None,
     landing_date: date | None = None,
     landing_time: datetime | None = None,
+    skyline: list[float] | np.ndarray | None = None,
+    site_alt_m: float = 0.0,
     sources: list[str] | None = None,
 ) -> dict:
     """Return a dict shaped like the /evaluate response in docs/ARCHITECTURE.md.
 
-    `ephem` is any object with `sky(lat, lon, times) -> ephemeris.Sky`.
+    `ephem` is any object with `sky(lat, lon, times, alt_m) -> ephemeris.Sky`.
     `landing_time` (naive UTC, hour precision) wins over `landing_date` (00:00 UTC).
+    `skyline` is the terrain horizon (360 elevation angles, 1° steps clockwise from
+    north). With it, the Sun/Earth only count as visible above the real terrain;
+    without it, above the smooth-sphere horizon. `site_alt_m` is passed to Horizons.
     """
     # The landing moment, if one was chosen.
     landing: datetime | None = landing_time or (
@@ -58,18 +63,21 @@ def evaluate(
         series_days = LUNAR_DAY_DAYS
 
     times = ephemeris.time_grid(series_start, series_days, STEP_HOURS)
-    sky = ephem.sky(lat, lon, times)
+    sky = ephem.sky(lat, lon, times, alt_m=site_alt_m)
     sun_el, earth_el = sky.sun_el, sky.earth_el
     used_sources = [sky.source]
+
+    # Terrain horizon in the direction of the Sun/Earth at each step.
+    sun_sky = skyline_at(skyline, sky.sun_az)
+    earth_sky = skyline_at(skyline, sky.earth_az)
+    sun_vis = sun_el > sun_sky
+    earth_vis = earth_el > earth_sky
 
     if lander:
         area, eff = lander["solar_array_m2"], lander["solar_efficiency"]
     else:
         area, eff = REFERENCE_PANEL_M2, REFERENCE_PANEL_EFF
-    power = _power_w(sun_el, area, eff)
-
-    sunlight_pct = _pct(sun_el > 0)
-    earth_pct = _pct(earth_el > 0)
+    power = _power_w(sun_el, area, eff) * sun_vis
 
     checks: list[dict] = []
     windows = None
@@ -79,7 +87,7 @@ def evaluate(
         site_checks = _site_checks(terrain, lander, payload_kg)
         checks.extend(site_checks)
         if landing:
-            checks.extend(_date_checks(sun_el, earth_el, lander))
+            checks.extend(_date_checks(sun_el - sun_sky, sun_vis, earth_vis, lander, skyline is not None))
             launch_estimate = landing.date() - timedelta(days=lander["transit_days"])
         else:
             site_ok = all(c["pass"] for c in site_checks)
@@ -87,7 +95,8 @@ def evaluate(
             earliest_landing = search_start + timedelta(days=lander["transit_days"])
             windows = []
             if site_ok:
-                windows, window_source = _find_windows(lat, lon, lander, earliest_landing, ephem)
+                windows, window_source = _find_windows(
+                    lat, lon, lander, earliest_landing, ephem, skyline, site_alt_m)
                 used_sources.append(window_source)
             if windows:
                 launch_estimate = windows[0]["start"] - timedelta(days=lander["transit_days"])
@@ -96,33 +105,48 @@ def evaluate(
     return {
         "site": {
             "slope_deg": terrain.slope_deg if terrain else None,
+            "slope_baseline_m": terrain.slope_baseline_m if terrain else None,
             "elevation_m": terrain.elevation_m if terrain else None,
             "temp_range_k": _temp_range(terrain),
-            "sunlight_pct": sunlight_pct,
-            "earth_visible_pct": earth_pct,
+            "sunlight_pct": _pct(sun_vis),
+            "earth_visible_pct": _pct(earth_vis),
+            "sunlight_pct_flat": _pct(sun_el > 0),          # same, ignoring terrain
+            "earth_visible_pct_flat": _pct(earth_el > 0),
         },
         "sky": [
             {
                 "t": t,
                 "sun_el": round(float(se), 2), "sun_az": round(float(sa), 1),
                 "earth_el": round(float(ee), 2), "earth_az": round(float(ea), 1),
+                "sun_visible": bool(sv), "earth_visible": bool(ev),
             }
-            for t, se, sa, ee, ea in zip(labels, sun_el, sky.sun_az, earth_el, sky.earth_az)
+            for t, se, sa, ee, ea, sv, ev in zip(
+                labels, sun_el, sky.sun_az, earth_el, sky.earth_az, sun_vis, earth_vis)
         ],
         "events": {
-            "sunrise": _first_crossing(sun_el, labels, rising=True),
-            "sunset": _first_crossing(sun_el, labels, rising=False),
-            "earthrise": _first_crossing(earth_el, labels, rising=True),
-            "earthset": _first_crossing(earth_el, labels, rising=False),
+            "sunrise": _first_crossing(sun_vis, labels, rising=True),
+            "sunset": _first_crossing(sun_vis, labels, rising=False),
+            "earthrise": _first_crossing(earth_vis, labels, rising=True),
+            "earthset": _first_crossing(earth_vis, labels, rising=False),
         },
         "power_w": [{"t": t, "w": round(float(w), 1)} for t, w in zip(labels, power)],
-        "comms": [{"t": t, "visible": bool(e > 0)} for t, e in zip(labels, earth_el)],
+        "comms": [{"t": t, "visible": bool(v)} for t, v in zip(labels, earth_vis)],
         "windows": windows,
         "launch_estimate": launch_estimate,
         "checks": checks,
         "pass": all(c["pass"] for c in checks) if checks else None,
         "sources": list(dict.fromkeys(used_sources + (sources or []))),
     }
+
+
+def skyline_at(skyline, azimuth_deg) -> np.ndarray:
+    """Terrain horizon elevation (deg) toward each azimuth; 0 when there's no skyline."""
+    az = np.asarray(azimuth_deg, dtype=float)
+    if skyline is None:
+        return np.zeros_like(az)
+    k = np.asarray(skyline, dtype=float)
+    step = 360.0 / len(k)
+    return np.interp(az % 360.0, np.arange(len(k) + 1) * step, np.append(k, k[0]))
 
 
 # ---- Checks -----------------------------------------------------------------
@@ -138,7 +162,8 @@ def _site_checks(terrain: TerrainSample | None, lander: dict, payload_kg: float 
     else:
         ok = slope <= limit
         word = "under" if ok else "over"
-        checks.append(_check("slope", ok, f"{slope:.1f}° is {word} {name}'s {limit:g}° limit"))
+        baseline = f" (LOLA, over {terrain.slope_baseline_m:.0f} m)" if terrain.slope_baseline_m else ""
+        checks.append(_check("slope", ok, f"{slope:.1f}°{baseline} is {word} {name}'s {limit:g}° limit"))
 
     tmax = terrain.tmax_k if terrain else None
     rated = lander["max_surface_temp_k"]
@@ -161,13 +186,16 @@ def _site_checks(terrain: TerrainSample | None, lander: dict, payload_kg: float 
     return checks
 
 
-def _date_checks(sun_el: np.ndarray, earth_el: np.ndarray, lander: dict) -> list[dict]:
-    sun_pct = _pct(sun_el > 0)
-    touchdown_el = float(sun_el[0])
-    if touchdown_el < MIN_TOUCHDOWN_SUN_EL_DEG:
+def _date_checks(sun_margin: np.ndarray, sun_vis: np.ndarray, earth_vis: np.ndarray,
+                 lander: dict, terrain_aware: bool) -> list[dict]:
+    """`sun_margin` = Sun elevation minus the horizon toward it (terrain or flat)."""
+    horizon = "terrain horizon" if terrain_aware else "horizon"
+    sun_pct = _pct(sun_vis)
+    touchdown = float(sun_margin[0])
+    if touchdown < MIN_TOUCHDOWN_SUN_EL_DEG:
         sun_check = _check(
             "sunlight", False,
-            f"Sun is {touchdown_el:.1f}° above the horizon at touchdown, "
+            f"Sun is {touchdown:.1f}° above the {horizon} at touchdown, "
             f"needs at least {MIN_TOUCHDOWN_SUN_EL_DEG:g}°",
         )
     else:
@@ -175,13 +203,14 @@ def _date_checks(sun_el: np.ndarray, earth_el: np.ndarray, lander: dict) -> list
         sun_check = _check(
             "sunlight", ok,
             f"{sun_pct:.0f}% sun over the {lander['mission_days']:g}-day mission "
-            f"(needs {MIN_SUNLIGHT_PCT:g}%)",
+            f"(needs {MIN_SUNLIGHT_PCT:g}%)" + (", counting terrain shadow" if terrain_aware else ""),
         )
 
-    earth_pct = _pct(earth_el > 0)
+    earth_pct = _pct(earth_vis)
     comms_check = _check(
         "comms", earth_pct >= MIN_EARTH_VISIBLE_PCT,
-        f"Earth visible {earth_pct:.0f}% of the mission (needs {MIN_EARTH_VISIBLE_PCT:g}%)",
+        f"Earth visible {earth_pct:.0f}% of the mission (needs {MIN_EARTH_VISIBLE_PCT:g}%)"
+        + (", counting terrain blocking" if terrain_aware else ""),
     )
     return [sun_check, comms_check]
 
@@ -192,7 +221,8 @@ def _check(name: str, ok: bool, detail: str) -> dict:
 
 # ---- Landing windows ----------------------------------------------------------
 
-def _find_windows(lat: float, lon: float, lander: dict, search_start: date, ephem) -> tuple[list[dict], str]:
+def _find_windows(lat: float, lon: float, lander: dict, search_start: date, ephem,
+                  skyline=None, site_alt_m: float = 0.0) -> tuple[list[dict], str]:
     """Runs of landing hours in the search range that pass the time-dependent checks.
 
     Every hourly step is a candidate touchdown, so each window's `start_time` is the
@@ -201,19 +231,20 @@ def _find_windows(lat: float, lon: float, lander: dict, search_start: date, ephe
     mission_steps = int(round(lander["mission_days"] * 24 / STEP_HOURS))
     steps_per_day = int(round(24 / STEP_HOURS))
     times = ephemeris.time_grid(search_start, WINDOW_SEARCH_DAYS + lander["mission_days"], STEP_HOURS)
-    sky = ephem.sky(lat, lon, times)
-    sun_el, earth_el = sky.sun_el, sky.earth_el
+    sky = ephem.sky(lat, lon, times, alt_m=site_alt_m)
+    sun_margin = sky.sun_el - skyline_at(skyline, sky.sun_az)
+    earth_margin = sky.earth_el - skyline_at(skyline, sky.earth_az)
     starts = np.arange(WINDOW_SEARCH_DAYS * steps_per_day)
 
-    # Percent of each mission-length slice with the body up, via cumulative sums.
+    # Percent of each mission-length slice with the body visible, via cumulative sums.
     def slice_pct(mask: np.ndarray) -> np.ndarray:
         c = np.concatenate([[0], np.cumsum(mask)])
         return 100.0 * (c[starts + mission_steps] - c[starts]) / mission_steps
 
     ok = (
-        (sun_el[starts] >= MIN_TOUCHDOWN_SUN_EL_DEG)
-        & (slice_pct(sun_el > 0) >= MIN_SUNLIGHT_PCT)
-        & (slice_pct(earth_el > 0) >= MIN_EARTH_VISIBLE_PCT)
+        (sun_margin[starts] >= MIN_TOUCHDOWN_SUN_EL_DEG)
+        & (slice_pct(sun_margin > 0) >= MIN_SUNLIGHT_PCT)
+        & (slice_pct(earth_margin > 0) >= MIN_EARTH_VISIBLE_PCT)
     )
     return _runs_to_windows(ok, times), sky.source
 
@@ -238,13 +269,13 @@ def _runs_to_windows(ok: np.ndarray, times: np.ndarray) -> list[dict]:
 # ---- Helpers ------------------------------------------------------------------
 
 def _power_w(sun_el_deg: np.ndarray, area_m2: float, eff: float) -> np.ndarray:
-    # Flat panel, no terrain shadowing (see docs/ARCHITECTURE.md).
+    # Flat panel. The caller zeroes it while terrain blocks the Sun.
     return np.clip(SOLAR_CONSTANT_W_M2 * np.sin(np.radians(sun_el_deg)) * area_m2 * eff, 0, None)
 
 
-def _first_crossing(el: np.ndarray, labels: list[str], rising: bool) -> str | None:
-    """Time of the first horizon crossing in the series (rise or set), or None."""
-    up = el > 0
+def _first_crossing(visible: np.ndarray, labels: list[str], rising: bool) -> str | None:
+    """Time of the first rise or set (visibility change) in the series, or None."""
+    up = np.asarray(visible, dtype=bool)
     change = (~up[:-1] & up[1:]) if rising else (up[:-1] & ~up[1:])
     idx = np.flatnonzero(change)
     return labels[idx[0] + 1] if len(idx) else None

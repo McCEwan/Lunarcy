@@ -32,7 +32,8 @@ OBSERVER_HEIGHT_M = 2.0  # roughly a lander's camera/solar-array height
 class SyntheticHeights:
     """Smooth made-up terrain defined everywhere on the sphere (PLACEHOLDER)."""
 
-    source = "PLACEHOLDER terrain: synthetic heights for the 3D view (not LOLA yet)"
+    source = "PLACEHOLDER terrain: synthetic heights (LOLA LDEM_64 not downloaded; run scripts/fetch_lola.py)"
+    resolution_m = 100.0
 
     def __init__(self, seed: int = 7, waves: int = 48):
         rng = np.random.default_rng(seed)

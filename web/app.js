@@ -59,8 +59,81 @@ const globe = new Globe(globeEl)
   .labelColor(statusColor)
   .labelLabel((s) => `<b>${esc(s.name)}</b><br>${esc(s.place)}<br>${esc(s.date)} · ${esc(s.status)}`)
   .onLabelClick((s) => pickCatalogSite(s))
-  .onGlobeClick(({ lat, lng }) => newSite(lat, lng));
+  .onGlobeClick(({ lat, lng }) => newSite(lat, lng))
+  // Sun and Earth markers (real directions from Horizons, not to scale)
+  .htmlLat('lat')
+  .htmlLng('lng')
+  .htmlAltitude('alt')
+  .htmlElement((d) => skyMarker(d))
+  .htmlElementVisibilityModifier((el, visible) => { el.style.opacity = visible ? '1' : '0.25'; });
 // TODO (frontend): placeholder lander model at the active site via customLayerData.
+
+// ---- Sun & Earth on the globe ----------------------------------------------------
+// Horizons tells us where on the Moon the Sun and Earth are directly overhead
+// (sub-solar / sub-Earth points). The globe is lit from the sub-solar direction,
+// so day and night are real for the chosen time, and markers float above both points.
+
+window.__globe = globe;   // handy for debugging in the browser console
+const [ambientLight, sunLight] = globe.lights();
+const defaultLighting = { ambient: ambientLight.intensity, sun: sunLight.intensity, parent: null };
+
+function skyMarker(d) {
+  const el = document.createElement('div');
+  el.className = `sky-marker ${d.kind}`;
+  el.innerHTML = d.kind === 'sun'
+    ? '<span class="glyph">☀️</span><span class="tag">Sun</span>'
+    : '<span class="glyph">🌍</span><span class="tag">Earth</span>';
+  el.title = d.kind === 'sun'
+    ? `Sun is overhead at ${fmtLat(d.lat)}, ${fmtLon(d.lng)}`
+    : `Earth is overhead at ${fmtLat(d.lat)}, ${fmtLon(d.lng)}`;
+  return el;
+}
+
+function skyTime() {
+  const s = state.current;
+  if (s?.landingDate) return `${s.landingDate}T${s.landingTime ?? '00:00'}:00Z`;
+  return null;   // now
+}
+
+async function updateGlobeSky() {
+  const t = skyTime();
+  try {
+    const res = await fetch(t ? `/sky/subpoints?time=${encodeURIComponent(t)}` : '/sky/subpoints');
+    if (!res.ok) return;
+    state.subpoints = await res.json();
+  } catch {
+    return;
+  }
+  applyGlobeSky();
+}
+
+function applyGlobeSky() {
+  const sub = state.subpoints;
+  const real = $('real-sun').checked && sub;
+  if (real) {
+    // Detach the default camera-following light and point it from the sub-solar direction.
+    if (!defaultLighting.parent) defaultLighting.parent = sunLight.parent;
+    if (sunLight.parent !== globe.scene()) globe.scene().add(sunLight);
+    const p = globe.getCoords(sub.sub_solar.lat, sub.sub_solar.lon, 20);
+    sunLight.position.set(p.x, p.y, p.z);
+    sunLight.intensity = 3.4;
+    ambientLight.intensity = 0.45;   // keep the night side faintly visible
+    globe.htmlElementsData([
+      { kind: 'sun', lat: sub.sub_solar.lat, lng: sub.sub_solar.lon, alt: 1.1 },
+      { kind: 'earth', lat: sub.sub_earth.lat, lng: sub.sub_earth.lon, alt: 0.7 },
+    ]);
+    const when = sub.time.replace('T', ' ').replace('Z', '');
+    const src = /Horizons/.test(sub.source) && !/APPROXIMATE/.test(sub.source) ? 'JPL Horizons' : 'approximate model';
+    $('sky-caption').textContent = `Lit for ${when} UTC (${src}). Markers show direction only, not distance or size.`;
+  } else {
+    if (defaultLighting.parent && sunLight.parent !== defaultLighting.parent) defaultLighting.parent.add(sunLight);
+    sunLight.position.set(0, 1, 0);
+    sunLight.intensity = defaultLighting.sun;
+    ambientLight.intensity = defaultLighting.ambient;
+    globe.htmlElementsData([]);
+    $('sky-caption').textContent = 'Even lighting, so every side of the Moon is easy to see.';
+  }
+}
 
 function resizeGlobe() {
   globe.width(globeEl.clientWidth).height(globeEl.clientHeight);
@@ -114,6 +187,7 @@ async function evaluateSite(site) {
   if (site.payload !== null && site.payload !== '') body.payload_kg = Number(site.payload);
   if (site.landingDate && site.landingTime) body.landing_time = `${site.landingDate}T${site.landingTime}:00Z`;
   else if (site.landingDate) body.landing_date = site.landingDate;
+  body.terrain_level = site.terrainLevel ?? 'global';
 
   showError(null);
   $('loading').hidden = false;
@@ -132,6 +206,9 @@ async function evaluateSite(site) {
     } else if (res.status === 404) {
       showError('That lander no longer exists. Refreshing the list.');
       await loadLanders();
+    } else if (res.status === 502) {
+      const { detail } = await res.json();
+      showError(String(detail));
     } else {
       showError('Evaluation failed, try again.');
     }
@@ -162,17 +239,46 @@ async function newSite(lat, lng, catalog = null) {
   const site = {
     id: crypto.randomUUID(), lat, lng,
     name: catalog?.name ?? null, catalog,
-    lander: catalog?.lander_id ?? null, payload: null, landingDate: null, landingTime: null, result: null,
+    lander: catalog?.lander_id ?? null, payload: null, landingDate: null, landingTime: null,
+    terrainLevel: 'global', result: null,
   };
   state.current = site;
   refreshPoints();
   render();
+  updateGlobeSky();
   globe.pointOfView({ lat, lng, altitude: 1.6 }, 800);
   const result = await evaluateSite(site);
   if (result && state.current === site) {
     site.result = result;
     render();
   }
+}
+
+// "Get detailed terrain": download ~30 m LOLA around the site, then re-evaluate with it.
+async function getDetailedTerrain(site = state.current) {
+  if (!site || site.terrainLevel === 'detailed') return site;
+  showError(null);
+  $('detail-status').textContent = 'Downloading detailed LOLA terrain from NASA PDS… (a few seconds)';
+  $('get-detail-btn').disabled = true;
+  try {
+    const res = await fetch(`/terrain/detail?lat=${site.lat}&lon=${site.lng}`, { method: 'POST' });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail ?? `HTTP ${res.status}`);
+    site.terrainLevel = 'detailed';
+    $('detail-status').textContent = body.cached
+      ? 'Detailed terrain loaded from cache. Recalculating…'
+      : `Downloaded ${body.product} in ${body.seconds} s. Recalculating…`;
+    const result = await evaluateSite(site);
+    if (result) site.result = result;
+    $('detail-status').textContent = '';
+  } catch (err) {
+    $('detail-status').textContent = '';
+    showError(`Detailed terrain failed: ${err.message}`);
+  } finally {
+    $('get-detail-btn').disabled = false;
+    render();
+  }
+  return site;
 }
 
 function pickCatalogSite(s) {
@@ -205,9 +311,10 @@ async function onEvaluate() {
   const result = await evaluateSite(site);
   if (result) site.result = result;
   render();
+  updateGlobeSky();
 }
 
-function onOpen3d() {
+function onOpen3d(initialT = 0) {
   const site = state.current;
   if (!site?.result) return;
   open3dView({
@@ -216,6 +323,13 @@ function onOpen3d() {
     lon: site.lng,
     result: site.result,
     landed: Boolean(site.lander && site.landingDate),
+    level: site.terrainLevel ?? 'global',
+    initialT,
+    // The 3D view's own "Get detailed terrain" button: fetch, re-evaluate, reopen at the same moment.
+    onRequestDetail: async (t) => {
+      await getDetailedTerrain(site);
+      if (state.current === site && site.terrainLevel === 'detailed') onOpen3d(t);
+    },
   });
 }
 
@@ -255,15 +369,16 @@ function skyNow(r) {
   // The series starts at 00:00 UTC on the start date, so use the sample nearest to now.
   const idx = Math.max(0, Math.min(r.sky.length - 1, Math.round((now - new Date(first.t)) / 3600e3)));
   const at = r.sky[idx];
-  const sunUp = at.sun_el > 0;
-  const earthUp = at.earth_el > 0;
-  const ev = r.events;
-  const sunText = sunUp
-    ? `☀️ Sun up (${at.sun_el.toFixed(1)}°)${ev.sunset ? ` · sets in ${until(ev.sunset)}` : ' all period'}`
-    : `☀️ Sun down${ev.sunrise ? ` · rises in ${until(ev.sunrise)}` : ' all period'}`;
-  const earthText = earthUp
-    ? `🌍 Earth up (${at.earth_el.toFixed(1)}°)${ev.earthset ? ` · sets in ${until(ev.earthset)}` : ' all period'}`
-    : `🌍 Earth below horizon${ev.earthrise ? ` · rises in ${until(ev.earthrise)}` : ' all period'}`;
+  const ev = r.events;   // rise/set times already account for terrain
+  const status = (name, el, visible) => (visible
+    ? `${name} up (${el.toFixed(1)}°)`
+    : el > 0 ? `${name} behind terrain (${el.toFixed(1)}° up, but below the skyline)` : `${name} below the horizon`);
+  const sunText = `☀️ ${status('Sun', at.sun_el, at.sun_visible)}` + (at.sun_visible
+    ? (ev.sunset ? ` · sets in ${until(ev.sunset)}` : ' all period')
+    : (ev.sunrise ? ` · appears in ${until(ev.sunrise)}` : ' all period'));
+  const earthText = `🌍 ${status('Earth', at.earth_el, at.earth_visible)}` + (at.earth_visible
+    ? (ev.earthset ? ` · sets in ${until(ev.earthset)}` : ' all period')
+    : (ev.earthrise ? ` · appears in ${until(ev.earthrise)}` : ' all period'));
   return `<div>${sunText}</div><div>${earthText}</div>`;
 }
 
@@ -285,38 +400,56 @@ function render() {
       (c.note ? `<br><span class="muted">${esc(c.note)}</span>` : '')
     : '<span class="muted">Custom site</span>';
   const start = r?.sky?.[0]?.t ?? new Date().toISOString();
+  const altKm = (r?.terrain?.site_elevation_m ?? 0) / 1000;
   $('site-links').innerHTML = [
     `<a href="${quickmapUrl(site.lat, site.lng)}" target="_blank" rel="noopener">QuickMap ↗</a>`,
     `<a href="${moontrekUrl(site.lat, site.lng)}" target="_blank" rel="noopener">Moon Trek ↗</a>`,
-    `<a href="${horizonsUrl(site.lat, site.lng, '10', start)}" target="_blank" rel="noopener">Horizons: Sun ↗</a>`,
-    `<a href="${horizonsUrl(site.lat, site.lng, '399', start)}" target="_blank" rel="noopener">Horizons: Earth ↗</a>`,
+    `<a href="${horizonsUrl(site.lat, site.lng, '10', start, 30, altKm)}" target="_blank" rel="noopener">Horizons: Sun ↗</a>`,
+    `<a href="${horizonsUrl(site.lat, site.lng, '399', start, 30, altKm)}" target="_blank" rel="noopener">Horizons: Earth ↗</a>`,
     c ? `<a href="${esc(c.source)}" target="_blank" rel="noopener">Site source ↗</a>` : '',
   ].join('');
 
   if (!r) {
     $('sky-now').innerHTML = '';
     $('site-tiles').innerHTML = '';
+    $('site-terrain').innerHTML = '';
+    $('get-detail-btn').hidden = true;
     $('result-section').hidden = true;
     $('view3d-btn').disabled = true;
     return;
   }
 
+  // Terrain level, its source, and the elevation Horizons was given.
+  const t = r.terrain;
+  const detailed = t.level === 'detailed';
+  const placeholder = /PLACEHOLDER/.test(t.heights_source);
+  $('site-terrain').innerHTML =
+    `<span class="badge ${detailed ? 'pass' : 'level'}">${detailed ? 'Detailed terrain' : 'Global estimate'}</span> ` +
+    `<span class="muted">${placeholder ? 'PLACEHOLDER terrain' : `NASA LOLA, ~${t.resolution_m.toFixed(0)} m pixels`}` +
+    ` · skyline up to ${t.skyline_max_deg.toFixed(1)}°</span><br>` +
+    `<span class="muted">Horizons site altitude: ${t.site_elevation_m >= 0 ? '+' : ''}${t.site_elevation_m.toFixed(0)} m (from LOLA)</span>`;
+  $('get-detail-btn').hidden = detailed;
+  $('get-detail-btn').textContent = t.detailed_cached
+    ? 'Use detailed terrain (already downloaded)'
+    : 'Get detailed terrain (LOLA ~30 m, a few seconds)';
+
   // Sun and Earth right now, plus time to the next rise/set.
   $('sky-now').innerHTML = skyNow(r);
 
-  // Site stats
+  // Site stats (terrain-aware, with the smooth-horizon value for comparison)
   const s = r.site;
   const temp = s.temp_range_k ? `${s.temp_range_k[0].toFixed(0)}–${s.temp_range_k[1].toFixed(0)} K` : '—';
+  const vsFlat = (v, flat) => (Math.abs(v - flat) >= 0.5 ? `<div class="sub">flat horizon: ${flat.toFixed(0)}%</div>` : '');
   const tiles = [
-    ['Sunlight', fmt(s.sunlight_pct, 0, '%')],
-    ['Earth visible', fmt(s.earth_visible_pct, 0, '%')],
-    ['Slope', fmt(s.slope_deg, 1, '°')],
-    ['Elevation', fmt(s.elevation_m, 0, ' m')],
-    ['Temperature', temp],
-    ['Peak power', fmt(Math.max(...r.power_w.map((p) => p.w)), 0, ' W')],
+    ['Sunlight', fmt(s.sunlight_pct, 0, '%'), vsFlat(s.sunlight_pct, s.sunlight_pct_flat)],
+    ['Earth visible', fmt(s.earth_visible_pct, 0, '%'), vsFlat(s.earth_visible_pct, s.earth_visible_pct_flat)],
+    ['Slope', fmt(s.slope_deg, 1, '°'), s.slope_baseline_m ? `<div class="sub">over ${s.slope_baseline_m.toFixed(0)} m</div>` : ''],
+    ['Elevation', fmt(s.elevation_m, 0, ' m'), ''],
+    ['Temperature', temp, '<div class="sub">placeholder</div>'],
+    ['Peak power', fmt(Math.max(...r.power_w.map((p) => p.w)), 0, ' W'), ''],
   ];
   $('site-tiles').innerHTML = tiles
-    .map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`)
+    .map(([k, v, sub]) => `<div class="tile"><div class="k">${k}</div><div class="v">${esc(v)}</div>${sub}</div>`)
     .join('') + (s.slope_deg === null ? '<p class="small muted">No terrain data here.</p>' : '');
 
   // Mission inputs
@@ -397,8 +530,10 @@ function showError(msg) {
 $('lander-select').addEventListener('change', onLanderChange);
 $('evaluate-btn').addEventListener('click', onEvaluate);
 $('compare-btn').addEventListener('click', onAddToComparison);
-$('view3d-btn').addEventListener('click', onOpen3d);
+$('view3d-btn').addEventListener('click', () => onOpen3d());
+$('get-detail-btn').addEventListener('click', () => getDetailedTerrain());
 $('show-sites').addEventListener('change', refreshLabels);
+$('real-sun').addEventListener('change', applyGlobeSky);
 $('layer-buttons').addEventListener('click', (e) => {
   const key = e.target.dataset?.layer;
   if (key) setLayer(key);
@@ -431,3 +566,4 @@ $('compare-list').addEventListener('click', (e) => {
 
 loadLayers();
 loadLanders().then(() => { refreshPoints(); return loadCatalog(); });
+updateGlobeSky();

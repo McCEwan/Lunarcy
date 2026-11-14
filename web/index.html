@@ -24,6 +24,8 @@
     <div class="overlay-title">Map layer · NASA Moon Trek</div>
     <div id="layer-buttons"></div>
     <label class="check"><input type="checkbox" id="show-sites" checked> Show notable landing sites</label>
+    <label class="check"><input type="checkbox" id="real-sun" checked> Light by the real Sun · show Sun &amp; Earth</label>
+    <div id="sky-caption" class="small muted"></div>
   </div>
 
   <aside id="panel">
@@ -46,6 +48,9 @@
     <section id="site-section" hidden>
       <h2>Site <span id="site-coords" class="muted"></span></h2>
       <div id="site-meta" class="small"></div>
+      <div id="site-terrain" class="small site-terrain"></div>
+      <button id="get-detail-btn" class="secondary" hidden>Get detailed terrain</button>
+      <div id="detail-status" class="small muted"></div>
       <div id="sky-now" class="sky-now"></div>
       <div class="tiles" id="site-tiles"></div>
       <div id="site-links" class="links small"></div>
@@ -105,6 +110,8 @@
           <button class="chip" data-view="sun">Stand here · face Sun</button>
           <button class="chip" data-view="earth">Stand here · face Earth</button>
         </span>
+        <span id="v3d-level" class="small"></span>
+        <button id="v3d-detail" class="chip" hidden>Get detailed terrain</button>
         <label class="check"><input type="checkbox" id="v3d-exag"> 2× relief</label>
         <label class="check"><input type="checkbox" id="v3d-enlarge"> Enlarge Sun &amp; Earth</label>
         <button id="v3d-close" class="chip" title="Close (Esc)">✕ Close</button>

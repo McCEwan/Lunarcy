@@ -1,5 +1,7 @@
 from datetime import date, datetime, timedelta
 
+import pytest
+
 from api import evaluator
 from api.ephemeris import AnalyticEphemeris
 from api.terrain import TerrainSample
@@ -107,6 +109,45 @@ def test_events_and_azimuths_are_reported():
 def test_sources_name_the_ephemeris():
     r = evaluator.evaluate(0, 0, terrain=FLAT, search_start=START, ephem=EPHEM)
     assert any("ephemeris" in s.lower() for s in r["sources"])
+
+
+def test_crater_rim_to_the_east_delays_sunrise_and_cuts_sunlight():
+    # A crater floor: the rim stands 12° high toward the east (az 45-135), 0° elsewhere.
+    skyline = [12.0 if 45 <= az <= 135 else 0.0 for az in range(360)]
+    flat = evaluator.evaluate(0, 0, terrain=FLAT, search_start=START, ephem=EPHEM)
+    crater = evaluator.evaluate(0, 0, terrain=FLAT, search_start=START, ephem=EPHEM, skyline=skyline)
+    assert crater["site"]["sunlight_pct"] < flat["site"]["sunlight_pct"]
+    assert crater["site"]["sunlight_pct_flat"] == flat["site"]["sunlight_pct"]
+    assert crater["events"]["sunrise"] > flat["events"]["sunrise"]          # Sun clears the rim later
+    for p, w in zip(crater["sky"], crater["power_w"]):
+        if p["sun_el"] > 0 and not p["sun_visible"]:
+            assert w["w"] == 0                                                  # no power in rim shadow
+            assert p["sun_el"] < 12 and 45 <= p["sun_az"] <= 135
+
+
+def test_wall_all_around_blocks_earth_and_comms():
+    # At 70°E Earth hangs ~20° above the western horizon, so a 40° wall hides it.
+    skyline = [40.0] * 360
+    r = evaluator.evaluate(0, 70, terrain=FLAT, search_start=START, ephem=EPHEM, skyline=skyline)
+    assert r["site"]["earth_visible_pct"] == 0.0 and r["site"]["earth_visible_pct_flat"] == 100.0
+    assert not any(c["visible"] for c in r["comms"])
+
+
+def test_terrain_shadow_can_remove_landing_windows():
+    skyline = [40.0] * 360          # a deep pit: the Sun only clears the walls around midday
+    flat = evaluator.evaluate(0, -10, terrain=FLAT, search_start=START, ephem=EPHEM, lander=LANDER)
+    walled = evaluator.evaluate(0, -10, terrain=FLAT, search_start=START, ephem=EPHEM, lander=LANDER,
+                                skyline=skyline)
+    assert flat["windows"] and walled["windows"] == []
+
+
+def test_skyline_at_interpolates_and_wraps():
+    k = [0.0] * 360
+    k[359], k[0], k[1] = 10.0, 20.0, 30.0
+    assert evaluator.skyline_at(k, [0.0, 0.5, 359.5])[0] == 20.0
+    assert evaluator.skyline_at(k, [0.5])[0] == pytest.approx(25.0)
+    assert evaluator.skyline_at(k, [359.5])[0] == pytest.approx(15.0)
+    assert evaluator.skyline_at(None, [10.0])[0] == 0.0
 
 
 def test_missing_terrain_still_returns_sky_stats():
