@@ -127,6 +127,7 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
   - The colour thresholds are the team's judgement calls (documented in `docs/ARCHITECTURE.md`), not NASA standards.
   - Panel sunlight assumes a flat, upward-facing panel. Real landers often use vertical or tilted panels at the poles, which catch far more of a low Sun.
   - Teammates must set up `~/LunarPlannerData` themselves (`python scripts/fetch_lola.py`).
+- **Follow-up (same session):** the user noticed the poles looked flat on the globe. The AI measured it: the real-Sun lighting from Session 4 (fill light 0.45) cut fine crater detail near 80°S from 16.9 to 9.3, because the Sun is always within ~1.5° of the polar horizon. It raised the fill light to 1.8 and lowered the Sun to 2.3. In a test, similar settings brought pole detail back to ~17–19, and day and night are still visibly different (checked by screenshot). The Moon Trek image itself is genuinely smeared within ~5° of the pole; lighting can't fix that.
 
 ---
 

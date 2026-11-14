@@ -145,8 +145,11 @@ function applyGlobeSky() {
     if (sunLight.parent !== globe.scene()) globe.scene().add(sunLight);
     const p = globe.getCoords(sub.sub_solar.lat, sub.sub_solar.lon, 20);
     sunLight.position.set(p.x, p.y, p.z);
-    sunLight.intensity = 3.4;
-    ambientLight.intensity = 0.45;   // keep the night side faintly visible
+    // The Sun is always within ~1.5° of the horizon at the poles, so with weak fill light
+    // the polar craters sink into a few dark tones. Strong fill keeps the (photo's own)
+    // crater detail readable; the direct Sun still makes day and night clearly different.
+    sunLight.intensity = 2.3;
+    ambientLight.intensity = 1.8;
     globe.htmlElementsData([
       { kind: 'sun', lat: sub.sub_solar.lat, lng: sub.sub_solar.lon, alt: 1.1 },
       { kind: 'earth', lat: sub.sub_earth.lat, lng: sub.sub_earth.lon, alt: 0.7 },
