@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lunar Planner</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.46.2/dist/globe.gl.min.js"></script>
+</head>
+<body>
+  <div id="globe"></div>
+
+  <!-- Map layer switcher (NASA Moon Trek layers) -->
+  <div id="layers" class="overlay">
+    <div class="overlay-title">Map layer · NASA Moon Trek</div>
+    <div id="layer-buttons"></div>
+    <label class="check"><input type="checkbox" id="show-sites" checked> Show notable landing sites</label>
+  </div>
+
+  <aside id="panel">
+    <header>
+      <h1>Lunar Planner</h1>
+      <p class="hint" id="hint">Click anywhere on the Moon, pick a notable landing site, or enter coordinates.</p>
+    </header>
+
+    <section id="pick-section">
+      <h2>Notable landing sites</h2>
+      <div id="site-filters" class="chips"></div>
+      <ul id="site-list" class="site-list"></ul>
+      <form id="coord-form" class="coord-form">
+        <input id="coord-lat" type="number" step="any" min="-90" max="90" placeholder="Lat (−90 to 90)" required>
+        <input id="coord-lon" type="number" step="any" min="-180" max="180" placeholder="Lon (−180 to 180, E+)" required>
+        <button type="submit">Go</button>
+      </form>
+    </section>
+
+    <section id="site-section" hidden>
+      <h2>Site <span id="site-coords" class="muted"></span></h2>
+      <div id="site-meta" class="small"></div>
+      <div id="sky-now" class="sky-now"></div>
+      <div class="tiles" id="site-tiles"></div>
+      <div id="site-links" class="links small"></div>
+      <!-- TODO (frontend): sky chart (sun_az/sun_el, earth_az/earth_el), power chart, comms strip -->
+    </section>
+
+    <section id="mission-section" hidden>
+      <h2>Mission</h2>
+      <label>Lander
+        <select id="lander-select"><option value="">Choose a lander</option></select>
+      </label>
+      <div id="lander-facts" class="muted small"></div>
+      <label>Payload (kg)
+        <input id="payload-input" type="number" min="0" step="1" placeholder="optional">
+      </label>
+      <div id="windows" class="small"></div>
+      <label>Landing date
+        <input id="date-input" type="date">
+      </label>
+      <button id="evaluate-btn" disabled>Evaluate mission</button>
+    </section>
+
+    <section id="result-section" hidden>
+      <h2>Verdict <span id="verdict" class="badge"></span></h2>
+      <p id="launch" class="small muted"></p>
+      <ul id="checks" class="checks"></ul>
+      <button id="compare-btn">Add to comparison</button>
+    </section>
+
+    <section id="compare-section" hidden>
+      <h2>Comparison</h2>
+      <ul id="compare-list" class="compare"></ul>
+    </section>
+
+    <p id="loading" class="small muted" hidden>Asking JPL Horizons…</p>
+    <p id="error" class="error" hidden></p>
+
+    <details id="sources-box" hidden>
+      <summary>Sources</summary>
+      <ul id="sources" class="small muted"></ul>
+    </details>
+  </aside>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

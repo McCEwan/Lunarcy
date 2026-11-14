@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Generated terrain grids (rebuild with scripts/build_grids.py)
+data/*
+!data/.gitkeep
+
+# Ephemeris kernels downloaded by skyfield
+*.bsp
+*.bpc
+*.tf
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

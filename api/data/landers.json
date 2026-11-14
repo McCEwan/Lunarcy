@@ -1,0 +1,42 @@
+[
+  {
+    "id": "blue-ghost",
+    "name": "Blue Ghost",
+    "operator": "Firefly Aerospace",
+    "reference_mission": "Blue Ghost Mission 1 (landed Mare Crisium, March 2025)",
+    "launch_mass_kg": 1500,
+    "payload_capacity_kg": 150,
+    "solar_array_m2": 2.5,
+    "solar_efficiency": 0.30,
+    "max_slope_deg": 10,
+    "max_surface_temp_k": 400,
+    "mission_days": 14,
+    "transit_days": 46,
+    "color": "#4da3ff",
+    "estimated_fields": ["solar_array_m2", "solar_efficiency", "max_slope_deg", "max_surface_temp_k"],
+    "sources": [
+      "https://fireflyspace.com/blue-ghost/",
+      "https://www.nasa.gov/commercial-lunar-payload-services/"
+    ]
+  },
+  {
+    "id": "nova-c",
+    "name": "Nova-C",
+    "operator": "Intuitive Machines",
+    "reference_mission": "IM-1 Odysseus (landed near Malapert A, February 2024)",
+    "launch_mass_kg": 1900,
+    "payload_capacity_kg": 130,
+    "solar_array_m2": 2.0,
+    "solar_efficiency": 0.30,
+    "max_slope_deg": 10,
+    "max_surface_temp_k": 400,
+    "mission_days": 7,
+    "transit_days": 7,
+    "color": "#ffb347",
+    "estimated_fields": ["solar_array_m2", "solar_efficiency", "max_slope_deg", "max_surface_temp_k"],
+    "sources": [
+      "https://www.intuitivemachines.com/",
+      "https://www.nasa.gov/commercial-lunar-payload-services/"
+    ]
+  }
+]

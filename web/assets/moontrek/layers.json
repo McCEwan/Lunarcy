@@ -1,0 +1,26 @@
+{
+  "wac": {
+    "file": "assets/moontrek/wac.jpg",
+    "label": "LRO WAC global mosaic (imagery)",
+    "layer_id": "LRO_WAC_Mosaic_Global_303ppd_v02",
+    "source": "NASA Moon Trek: LRO_WAC_Mosaic_Global_303ppd_v02"
+  },
+  "elevation": {
+    "file": "assets/moontrek/elevation.jpg",
+    "label": "LRO LOLA color-shaded elevation",
+    "layer_id": "LRO_LOLA_ClrShade_Global_128ppd_v04",
+    "source": "NASA Moon Trek: LRO_LOLA_ClrShade_Global_128ppd_v04"
+  },
+  "slope": {
+    "file": "assets/moontrek/slope.jpg",
+    "label": "LRO LOLA colorized slope",
+    "layer_id": "LRO_LOLA_ClrSlope_Global_16ppd",
+    "source": "NASA Moon Trek: LRO_LOLA_ClrSlope_Global_16ppd"
+  },
+  "temperature": {
+    "file": "assets/moontrek/temperature.jpg",
+    "label": "LRO Diviner maximum bolometric temperature",
+    "layer_id": "diviner_Clrtbol_max",
+    "source": "NASA Moon Trek: diviner_Clrtbol_max"
+  }
+}
