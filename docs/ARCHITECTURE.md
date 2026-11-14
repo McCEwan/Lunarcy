@@ -59,6 +59,7 @@ The comparison view is just the frontend's list of cached `/evaluate` results. I
   - Solar power (watts) over the landing window, as a line chart.
   - Earth communications access over time at that site, as a strip or area chart.
 - **Comparison list:** a sidebar. Clicking a row makes that site active and swaps the pop-up, charts and lander model to it.
+- **3D site view (`web/site3d.js`, three.js 0.170 via the import map in `index.html`):** a 20 × 20 km terrain mesh from `/terrain/patch` (1× scale, with a 2× option, and the Moon's curvature applied), a directional light at the Sun's Horizons az/el with shadows, the Sun and Earth drawn at their true angular sizes (with an "enlarge" option), and Earth's phase from the Sun/Earth geometry. Also shown: the skyline from `/terrain/horizon` and N/E/S/W labels. A timelapse plays the `/evaluate` series from the landing hour to mission end (or across a lunar day if no landing is chosen), with play/pause, speed and a scrubber. The readout shows UTC time, T+, Sun and Earth az/el, power, comms, time to sunset/Earthset, and "behind terrain" when the skyline blocks the Sun or Earth. Moon and Earth surfaces are generic textures by design. Coordinates: x = east, y = up, z = −north, and direction = `(sin az·cos el, sin el, −cos az·cos el)`. `window.__lunar3d` exposes the live view for debugging.
 - **State:** one array of sites in memory:
 
 ```js
@@ -69,7 +70,10 @@ Remember that globe.gl uses `lng` and the API uses `lon`.
 
 ### Backend (`api/`)
 - **Stack:** FastAPI + Uvicorn, Pydantic models. FastAPI also serves `web/` as static files, so one process, one port, no CORS **(recommended)**.
-- **Endpoints:** `POST /evaluate`, `GET /landers`, `GET /sites`, `GET /health`.
+- **Endpoints:** `POST /evaluate`, `GET /landers`, `GET /sites`, `GET /terrain/patch`, `GET /terrain/horizon`, `GET /health`.
+- **Local terrain (`patch.py`):** built from a *height source*, any object with `heights(lat_deg, lon_deg) -> metres` (relative to the 1737.4 km sphere) and a `source` string. `main.HEIGHTS` is currently `SyntheticHeights` (PLACEHOLDER). To switch to real data, write a LOLA-backed class with the same two members and assign it there. Nothing else changes.
+  - `GET /terrain/patch?lat&lon&size_km=20&n=256` → `{center_lat, center_lon, size_m, n, spacing_m, projection: "local-tangent", center_height_m, heights: [n·n, row-major, row 0 = north edge, col 0 = west edge, null = hole], source}`. Curvature is not removed (the client applies it).
+  - `GET /terrain/horizon?lat&lon&radius_km=150` → `{azimuth_step_deg: 1, elevation_deg: [360 values, clockwise from north], radius_m, observer_height_m: 2, source}`. Calculated by marching 300 log-spaced samples out to the radius along each azimuth, including curvature. Takes about 0.2 s and is cached.
 - **`evaluator.py`:** `evaluate(lat, lon, terrain=..., ephem=..., lander=..., ...) -> Result`. It does no I/O itself. The ephemeris provider is passed in, so tests use the offline one.
 - **Ephemeris (`ephemeris.py`):** `HorizonsEphemeris` calls the JPL Horizons API (`CENTER='coord@301'`, `SITE_COORD='lon,lat,0'`, `QUANTITIES='4'`) for the Sun (`10`) and Earth (`399`) in parallel, hourly. Responses are cached on disk in `data/horizons_cache/`. A first call for a new site takes about 1–2 s, and a cached call about 10 ms. If Horizons can't be reached, it falls back to `AnalyticEphemeris` and the response's `sources` says so. Set `EPHEMERIS=analytic` to force offline mode. Horizons uses the Moon's mean-Earth (ME) frame, the same frame as LOLA.
 - **Notable sites (`data/sites.json`):** Apollo 11–17, Surveyor 1, Luna 9/16/17/21/24, Chang'e 3–6, Chandrayaan-3, SLIM, IM-1, Blue Ghost M1, IM-2, plus planned CLPS targets. Planned sites without published coordinates have `precision: "region"` and a `note`. Each entry cites a `source`.
@@ -105,7 +109,7 @@ Default time resolution is 1 hour over one lunar day (about 29.5 days). Use vect
 }
 ```
 
-`lander_id`, `payload_kg` and `landing_date` are optional. Omitting them returns the site-only stats from step 1. Omitting only `landing_date` also returns `windows` for step 3.
+`lander_id`, `payload_kg`, `landing_date` and `landing_time` are optional. Omitting them returns the site-only stats from step 1. Omitting only the landing date/time also returns `windows` for step 3. `landing_time` (UTC, e.g. `"2027-03-14T07:00:00Z"`, rounded down to the hour) wins over `landing_date` (which means 00:00 UTC). With either one and a lander, the `sky`/`power_w`/`comms` series start at the landing hour and span the lander's mission, which is what the 3D timelapse plays.
 
 | Field | Type | Rules |
 |---|---|---|
@@ -114,6 +118,7 @@ Default time resolution is 1 hour over one lunar day (about 29.5 days). Use vect
 | `lander_id` | string | Must exist in `landers.json` |
 | `payload_kg` | float | 0 to the lander's capacity |
 | `landing_date` | date | Must fall in the ephemeris range |
+| `landing_time` | datetime (UTC) | Must fall in the ephemeris range |
 
 **Response (200)**
 
@@ -130,7 +135,7 @@ Default time resolution is 1 hour over one lunar day (about 29.5 days). Use vect
   "events": { "sunrise": null, "sunset": "2027-03-27T05:00Z", "earthrise": null, "earthset": "2027-03-20T11:00Z" },
   "power_w": [{ "t": "2027-03-14T00:00Z", "w": 142.0 }],
   "comms": [{ "t": "2027-03-14T00:00Z", "visible": true }],
-  "windows": [{ "start": "2027-03-10", "end": "2027-03-22" }],
+  "windows": [{ "start": "2027-03-10", "end": "2027-03-22", "start_time": "2027-03-10T07:00Z", "end_time": "2027-03-22T18:00Z" }],
   "launch_estimate": "2027-03-08",
   "checks": [
     { "name": "slope", "pass": true,  "detail": "4.2° is under Blue Ghost's 10° limit" },
@@ -144,7 +149,7 @@ Default time resolution is 1 hour over one lunar day (about 29.5 days). Use vect
 }
 ```
 
-Each `check` carries its own plain-language `detail`, which is exactly what step 4 displays. Overall `pass` is true only if every check passes. In a site-only request (no `lander_id`), `checks` is empty and `pass`, `windows` and `launch_estimate` are `null`. With a lander but no date, `checks` holds only the date-independent checks (slope, temperature, payload). The thresholds (for example, minimum sun % or Earth %) are config values in `evaluator.py` **(assumed)**.
+Each `check` carries its own plain-language `detail`, which is exactly what step 4 displays. Overall `pass` is true only if every check passes. In a site-only request (no `lander_id`), `checks` is empty and `pass`, `windows` and `launch_estimate` are `null`. With a lander but no date, `checks` holds only the date-independent checks (slope, temperature, payload). Windows are searched hour by hour: every hour is a candidate touchdown, and `start_time` (the first hour that passes) is the **suggested landing time**. The thresholds (for example, minimum sun % or Earth %) are config values in `evaluator.py` **(assumed)**.
 
 ## Data flow
 

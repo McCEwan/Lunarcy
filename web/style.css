@@ -108,7 +108,40 @@ a { color: var(--accent); }
 .sky-now:empty { display: none; }
 .links { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; }
 
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ---- 3D site view overlay ---- */
+#view3d {
+  position: fixed; inset: 0; z-index: 10; background: #000;
+  display: grid; grid-template-rows: auto 1fr auto;
+}
+#view3d[hidden] { display: none; }
+.v3d-top, .v3d-bottom {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  padding: 8px 12px; background: var(--panel); border-color: var(--line); border-style: solid; border-width: 0;
+}
+.v3d-top { justify-content: space-between; border-bottom-width: 1px; }
+.v3d-bottom { border-top-width: 1px; }
+.v3d-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.v3d-tools .check { margin: 0; }
+#v3d-canvas { position: relative; min-height: 0; overflow: hidden; }
+#v3d-canvas canvas { display: block; }
+#v3d-hud {
+  position: absolute; top: 64px; left: 12px; z-index: 11; width: 270px;
+  background: rgba(15, 20, 32, .85); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; font-size: 13px; line-height: 1.6; pointer-events: none;
+}
+#v3d-hud .big { font-size: 15px; font-weight: 600; }
+#v3d-hud hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; }
+#v3d-hud .warn { color: var(--fail); font-weight: 600; }
+#v3d-hud .ok { color: var(--pass); }
+#v3d-play, #v3d-speed { width: auto; margin: 0; }
+#v3d-play { min-width: 92px; }
+#v3d-scrub { flex: 1 1 260px; margin: 0; padding: 0; accent-color: var(--accent); }
+#v3d-note { flex-basis: 100%; }
+
 @media (max-width: 700px) {
+  #v3d-hud { top: auto; bottom: 120px; width: auto; right: 12px; font-size: 12px; }
   :root { --panel-w: 100%; }
   #globe { inset: 0 0 50% 0; }
   #panel { top: 50%; width: 100%; border-left: 0; border-top: 1px solid var(--line); }

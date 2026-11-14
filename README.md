@@ -37,13 +37,14 @@ The Moon Trek textures are already in `web/assets/moontrek/`. Rebuild them with 
 | Terrain grids (`scripts/build_grids.py`) | **Placeholder:** synthetic. Replace with LOLA and Diviner. |
 | Terrain horizon (crater rims, mountains) | Not modeled yet. Horizon is the smooth-sphere horizon. |
 | Lander specs (`api/data/landers.json`) | Partly real. Unpublished values are listed in `estimated_fields`. |
-| Frontend (`web/`) | Working: globe, layers, site catalog, links, stats, lander, windows, checks, comparison. Charts still TODO. |
+| Frontend (`web/`) | Working: globe, layers, site catalog, links, stats, lander, windows with suggested landing hour, checks, comparison. Charts still TODO. |
+| 3D site view + timelapse (`web/site3d.js`) | Working. Sun/Earth from Horizons (real). Terrain mesh and skyline use **placeholder** synthetic heights (`api/patch.py`) until LOLA is plugged in. |
 
 ## Splitting the work
 
 The `/evaluate` contract is the boundary, and the frontend never depends on how the numbers are calculated.
 
-- **Backend:** real LOLA and Diviner grids → terrain horizon masks for the south pole → tune the checks → more landers.
+- **Backend:** real LOLA and Diviner grids → a LOLA-backed height source for `api/patch.py` (same `heights(lat, lon)` / `source` interface as `SyntheticHeights`; that one change makes the 3D terrain and skyline real) → tune the checks → more landers.
 - **Frontend:** sky chart (az/el) → timeline of valid windows → power and comms charts → lander model on the globe.
 
 Work on a branch, keep PRs small, update the design doc if you change the contract, and add an entry to `docs/AI_USAGE.md` after each AI-assisted session.

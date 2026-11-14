@@ -3,6 +3,7 @@
 // (and when reading /sites, which uses `lon`).
 
 import { horizonsUrl, moontrekUrl, quickmapUrl } from './links.js';
+import { open3dView } from './site3d.js';
 
 const MAX_DATE = '2050-12-31';
 const FALLBACK_TEXTURE = 'https://cdn.jsdelivr.net/gh/vasturiano/globe.gl@v2.46.2/example/moon-landing-sites/lunar_surface.jpg';
@@ -20,7 +21,7 @@ const state = {
   landers: [],       // GET /landers
   catalog: [],       // GET /sites (notable landing sites)
   layers: {},        // web/assets/moontrek/layers.json
-  sites: [],         // comparison list: { id, lat, lng, name, catalog, lander, payload, landingDate, result }
+  sites: [],         // comparison list: { id, lat, lng, name, catalog, lander, payload, landingDate, landingTime, result }
   current: null,     // the site being worked on (may or may not be in `sites`)
   filter: 'all',
 };
@@ -111,7 +112,8 @@ async function evaluateSite(site) {
   const body = { lat: site.lat, lon: site.lng };
   if (site.lander) body.lander_id = site.lander;
   if (site.payload !== null && site.payload !== '') body.payload_kg = Number(site.payload);
-  if (site.landingDate) body.landing_date = site.landingDate;
+  if (site.landingDate && site.landingTime) body.landing_time = `${site.landingDate}T${site.landingTime}:00Z`;
+  else if (site.landingDate) body.landing_date = site.landingDate;
 
   showError(null);
   $('loading').hidden = false;
@@ -160,7 +162,7 @@ async function newSite(lat, lng, catalog = null) {
   const site = {
     id: crypto.randomUUID(), lat, lng,
     name: catalog?.name ?? null, catalog,
-    lander: catalog?.lander_id ?? null, payload: null, landingDate: null, result: null,
+    lander: catalog?.lander_id ?? null, payload: null, landingDate: null, landingTime: null, result: null,
   };
   state.current = site;
   refreshPoints();
@@ -188,6 +190,7 @@ async function onLanderChange() {
   if (!site) return;
   site.lander = $('lander-select').value || null;
   site.landingDate = null;
+  site.landingTime = null;
   const result = await evaluateSite(site);
   if (result) site.result = result;
   render();
@@ -198,9 +201,22 @@ async function onEvaluate() {
   if (!site) return;
   site.payload = $('payload-input').value;
   site.landingDate = $('date-input').value || null;
+  site.landingTime = site.landingDate ? ($('time-input').value || null) : null;
   const result = await evaluateSite(site);
   if (result) site.result = result;
   render();
+}
+
+function onOpen3d() {
+  const site = state.current;
+  if (!site?.result) return;
+  open3dView({
+    title: site.name ?? 'Custom site',
+    lat: site.lat,
+    lon: site.lng,
+    result: site.result,
+    landed: Boolean(site.lander && site.landingDate),
+  });
 }
 
 function onAddToComparison() {
@@ -281,6 +297,7 @@ function render() {
     $('sky-now').innerHTML = '';
     $('site-tiles').innerHTML = '';
     $('result-section').hidden = true;
+    $('view3d-btn').disabled = true;
     return;
   }
 
@@ -306,9 +323,14 @@ function render() {
   $('lander-select').value = site.lander ?? '';
   $('payload-input').value = site.payload ?? '';
   $('date-input').value = site.landingDate ?? '';
+  $('time-input').value = site.landingTime ?? '';
   $('date-input').min = new Date().toISOString().slice(0, 10);
   $('date-input').max = MAX_DATE;
   $('evaluate-btn').disabled = !site.lander;
+  $('view3d-btn').disabled = false;
+  $('view3d-btn').textContent = site.lander && site.landingDate
+    ? 'Open 3D view · timelapse from landing'
+    : 'Open 3D view';
 
   const lander = state.landers.find((l) => l.id === site.lander);
   $('lander-facts').innerHTML = lander
@@ -320,8 +342,13 @@ function render() {
   // Landing windows (TODO frontend: replace with the timeline strip)
   if (r.windows) {
     $('windows').innerHTML = r.windows.length
-      ? 'Valid landing windows: ' + r.windows
-          .map((w) => `<button class="window-btn" data-date="${w.start}">${w.start} → ${w.end}</button>`)
+      ? 'Valid landing windows (click to use the suggested landing time):<br>' + r.windows
+          .map((w) => {
+            const t = w.start_time.slice(11, 16);
+            return `<button class="window-btn" data-date="${w.start}" data-time="${t}" ` +
+              `title="Earliest landing ${w.start_time.replace('T', ' ')} UTC, latest ${w.end_time.replace('T', ' ')} UTC">` +
+              `${w.start} ${t} UTC → ${w.end}</button>`;
+          })
           .join('')
       : 'No valid landing windows in the next few months.';
   } else if (!site.landingDate) {
@@ -355,7 +382,7 @@ function renderCompareList() {
     const verdict = s.result?.pass === true ? 'PASS' : s.result?.pass === false ? 'FAIL' : '—';
     const where = s.name ?? `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`;
     return `<li data-id="${s.id}" class="${s === state.current ? 'active' : ''}" style="border-left-color:${landerColor(s.lander)}">
-      <b>${esc(where)}</b> · ${esc(name)} · ${esc(s.landingDate ?? 'no date')} · ${verdict}
+      <b>${esc(where)}</b> · ${esc(name)} · ${esc(s.landingDate ? `${s.landingDate} ${s.landingTime ?? '00:00'} UTC` : 'no date')} · ${verdict}
     </li>`;
   }).join('');
 }
@@ -370,6 +397,7 @@ function showError(msg) {
 $('lander-select').addEventListener('change', onLanderChange);
 $('evaluate-btn').addEventListener('click', onEvaluate);
 $('compare-btn').addEventListener('click', onAddToComparison);
+$('view3d-btn').addEventListener('click', onOpen3d);
 $('show-sites').addEventListener('change', refreshLabels);
 $('layer-buttons').addEventListener('click', (e) => {
   const key = e.target.dataset?.layer;
@@ -390,7 +418,10 @@ $('coord-form').addEventListener('submit', (e) => {
 });
 $('windows').addEventListener('click', (e) => {
   const date = e.target.dataset?.date;
-  if (date) $('date-input').value = date;
+  if (date) {
+    $('date-input').value = date;
+    $('time-input').value = e.target.dataset.time ?? '';
+  }
 });
 $('compare-list').addEventListener('click', (e) => {
   const li = e.target.closest('li[data-id]');

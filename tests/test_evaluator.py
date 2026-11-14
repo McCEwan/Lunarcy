@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from api import evaluator
 from api.ephemeris import AnalyticEphemeris
@@ -66,14 +66,34 @@ def test_flat_near_side_site_has_windows():
     assert r["launch_estimate"] >= START, "launch can't be in the past"
 
 
-def test_landing_in_a_window_passes():
+def _hour(iso: str) -> datetime:
+    return datetime.fromisoformat(iso.rstrip("Z"))
+
+
+def test_landing_at_suggested_time_passes():
     windows = evaluator.evaluate(0, -10, terrain=FLAT, search_start=START, ephem=EPHEM, lander=LANDER)["windows"]
     r = evaluator.evaluate(
         0, -10, terrain=FLAT, search_start=START, ephem=EPHEM, lander=LANDER,
-        payload_kg=90, landing_date=windows[0]["start"],
+        payload_kg=90, landing_time=_hour(windows[0]["start_time"]),
     )
     assert r["pass"] is True, r["checks"]
     assert {c["name"] for c in r["checks"]} == {"slope", "temperature", "payload", "sunlight", "comms"}
+    assert r["sky"][0]["t"] == windows[0]["start_time"]          # timelapse starts at landing
+    assert len(r["sky"]) == LANDER["mission_days"] * 24           # ...and spans the mission
+
+
+def test_suggested_time_is_the_first_hour_that_works():
+    windows = evaluator.evaluate(0, -10, terrain=FLAT, search_start=START, ephem=EPHEM, lander=LANDER)["windows"]
+    # windows[0] can open at the very first hour searched; windows[1] opens mid-range.
+    w = windows[1]
+    start = _hour(w["start_time"])
+    before = evaluator.evaluate(
+        0, -10, terrain=FLAT, search_start=START, ephem=EPHEM, lander=LANDER,
+        landing_time=start - timedelta(hours=1),
+    )
+    assert before["pass"] is False
+    assert w["start"] == start.date()
+    assert _hour(w["end_time"]) >= start
 
 
 def test_events_and_azimuths_are_reported():

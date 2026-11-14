@@ -7,7 +7,7 @@ provider (Horizons) fetches over the network; tests pass the offline one.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 import numpy as np
 
@@ -37,15 +37,22 @@ def evaluate(
     lander: dict | None = None,
     payload_kg: float | None = None,
     landing_date: date | None = None,
+    landing_time: datetime | None = None,
     sources: list[str] | None = None,
 ) -> dict:
     """Return a dict shaped like the /evaluate response in docs/ARCHITECTURE.md.
 
     `ephem` is any object with `sky(lat, lon, times) -> ephemeris.Sky`.
+    `landing_time` (naive UTC, hour precision) wins over `landing_date` (00:00 UTC).
     """
+    # The landing moment, if one was chosen.
+    landing: datetime | None = landing_time or (
+        datetime.combine(landing_date, time()) if landing_date else None
+    )
+
     # Which stretch of time the sky/power/comms series cover.
-    series_start = landing_date or search_start
-    if lander and landing_date:
+    series_start = landing or search_start
+    if lander and landing:
         series_days = lander["mission_days"]
     else:
         series_days = LUNAR_DAY_DAYS
@@ -71,9 +78,9 @@ def evaluate(
     if lander:
         site_checks = _site_checks(terrain, lander, payload_kg)
         checks.extend(site_checks)
-        if landing_date:
+        if landing:
             checks.extend(_date_checks(sun_el, earth_el, lander))
-            launch_estimate = landing_date - timedelta(days=lander["transit_days"])
+            launch_estimate = landing.date() - timedelta(days=lander["transit_days"])
         else:
             site_ok = all(c["pass"] for c in site_checks)
             # Earliest possible landing is a launch today plus the transit time.
@@ -186,13 +193,17 @@ def _check(name: str, ok: bool, detail: str) -> dict:
 # ---- Landing windows ----------------------------------------------------------
 
 def _find_windows(lat: float, lon: float, lander: dict, search_start: date, ephem) -> tuple[list[dict], str]:
-    """Days in the search range where a landing at 00:00 UTC passes the time-dependent checks."""
+    """Runs of landing hours in the search range that pass the time-dependent checks.
+
+    Every hourly step is a candidate touchdown, so each window's `start_time` is the
+    earliest hour a landing works: the suggested landing time.
+    """
     mission_steps = int(round(lander["mission_days"] * 24 / STEP_HOURS))
     steps_per_day = int(round(24 / STEP_HOURS))
     times = ephemeris.time_grid(search_start, WINDOW_SEARCH_DAYS + lander["mission_days"], STEP_HOURS)
     sky = ephem.sky(lat, lon, times)
     sun_el, earth_el = sky.sun_el, sky.earth_el
-    starts = np.arange(WINDOW_SEARCH_DAYS) * steps_per_day
+    starts = np.arange(WINDOW_SEARCH_DAYS * steps_per_day)
 
     # Percent of each mission-length slice with the body up, via cumulative sums.
     def slice_pct(mask: np.ndarray) -> np.ndarray:
@@ -204,18 +215,21 @@ def _find_windows(lat: float, lon: float, lander: dict, search_start: date, ephe
         & (slice_pct(sun_el > 0) >= MIN_SUNLIGHT_PCT)
         & (slice_pct(earth_el > 0) >= MIN_EARTH_VISIBLE_PCT)
     )
-    return _runs_to_windows(ok, search_start), sky.source
+    return _runs_to_windows(ok, times), sky.source
 
 
-def _runs_to_windows(ok: np.ndarray, start: date) -> list[dict]:
+def _runs_to_windows(ok: np.ndarray, times: np.ndarray) -> list[dict]:
     windows, run_start = [], None
     for i, good in enumerate(list(ok) + [False]):
         if good and run_start is None:
             run_start = i
         elif not good and run_start is not None:
+            first, last = times[run_start], times[i - 1]
             windows.append({
-                "start": start + timedelta(days=run_start),
-                "end": start + timedelta(days=i - 1),
+                "start": first.astype("datetime64[D]").item(),
+                "end": last.astype("datetime64[D]").item(),
+                "start_time": _iso(first),
+                "end_time": _iso(last),
             })
             run_start = None
     return windows

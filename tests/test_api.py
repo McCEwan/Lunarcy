@@ -43,6 +43,22 @@ def test_full_request_uses_pass_key():
     assert all("pass" in c for c in body["checks"])
 
 
+def test_landing_time_starts_the_series_at_that_hour():
+    r = client.post("/evaluate", json={
+        "lat": 0, "lon": -10, "lander_id": "blue-ghost", "landing_time": "2027-03-14T07:30:00Z",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["sky"][0]["t"] == "2027-03-14T07:00Z"     # rounded down to the hour
+    assert len(body["sky"]) == 14 * 24                     # Blue Ghost's 14-day mission
+
+
+def test_windows_carry_suggested_landing_times():
+    r = client.post("/evaluate", json={"lat": 0, "lon": -10, "lander_id": "blue-ghost"})
+    for w in r.json()["windows"]:
+        assert w["start_time"].endswith("Z") and w["start_time"][:10] == w["start"]
+
+
 def test_bad_latitude_is_422():
     assert client.post("/evaluate", json={"lat": 95, "lon": 0}).status_code == 422
 

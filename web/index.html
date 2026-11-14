@@ -6,6 +6,15 @@
   <title>Lunar Planner</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.46.2/dist/globe.gl.min.js"></script>
+  <!-- three.js as ES modules for the 3D site view (web/site3d.js) -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <div id="globe"></div>
@@ -40,6 +49,7 @@
       <div id="sky-now" class="sky-now"></div>
       <div class="tiles" id="site-tiles"></div>
       <div id="site-links" class="links small"></div>
+      <button id="view3d-btn" disabled>Open 3D view</button>
       <!-- TODO (frontend): sky chart (sun_az/sun_el, earth_az/earth_el), power chart, comms strip -->
     </section>
 
@@ -53,9 +63,14 @@
         <input id="payload-input" type="number" min="0" step="1" placeholder="optional">
       </label>
       <div id="windows" class="small"></div>
-      <label>Landing date
-        <input id="date-input" type="date">
-      </label>
+      <div class="row2">
+        <label>Landing date
+          <input id="date-input" type="date">
+        </label>
+        <label>Time (UTC)
+          <input id="time-input" type="time" step="3600">
+        </label>
+      </div>
       <button id="evaluate-btn" disabled>Evaluate mission</button>
     </section>
 
@@ -79,6 +94,37 @@
       <ul id="sources" class="small muted"></ul>
     </details>
   </aside>
+
+  <!-- 3D site view (web/site3d.js) -->
+  <div id="view3d" hidden>
+    <div class="v3d-top">
+      <div><b id="v3d-title"></b> <span id="v3d-sub" class="muted small"></span></div>
+      <div class="v3d-tools">
+        <span id="v3d-views">
+          <button class="chip" data-view="overview">Overview</button>
+          <button class="chip" data-view="sun">Stand here · face Sun</button>
+          <button class="chip" data-view="earth">Stand here · face Earth</button>
+        </span>
+        <label class="check"><input type="checkbox" id="v3d-exag"> 2× relief</label>
+        <label class="check"><input type="checkbox" id="v3d-enlarge"> Enlarge Sun &amp; Earth</label>
+        <button id="v3d-close" class="chip" title="Close (Esc)">✕ Close</button>
+      </div>
+    </div>
+    <div id="v3d-canvas"></div>
+    <div id="v3d-hud"></div>
+    <div class="v3d-bottom">
+      <button id="v3d-play">▶ Play</button>
+      <select id="v3d-speed" title="Simulated hours per second">
+        <option value="1">1 h/s</option>
+        <option value="6">6 h/s</option>
+        <option value="24">1 day/s</option>
+        <option value="72">3 days/s</option>
+      </select>
+      <input id="v3d-scrub" type="range" min="0" max="1" step="0.01" value="0">
+      <span id="v3d-time" class="small"></span>
+      <div id="v3d-note" class="small muted"></div>
+    </div>
+  </div>
 
   <script type="module" src="app.js"></script>
 </body>

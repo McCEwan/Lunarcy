@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -16,6 +16,7 @@ class EvaluateRequest(BaseModel):
     lander_id: str | None = None
     payload_kg: float | None = Field(default=None, ge=0)
     landing_date: date | None = None
+    landing_time: datetime | None = None  # UTC; wins over landing_date when both are sent
 
     @field_validator("landing_date")
     @classmethod
@@ -23,6 +24,17 @@ class EvaluateRequest(BaseModel):
         if v is not None and not (EPHEMERIS_START <= v <= EPHEMERIS_END):
             raise ValueError(f"must be between {EPHEMERIS_START} and {EPHEMERIS_END}")
         return v
+
+    @field_validator("landing_time")
+    @classmethod
+    def utc_and_in_range(cls, v: datetime | None) -> datetime | None:
+        if v is None:
+            return None
+        if v.tzinfo is not None:
+            v = v.astimezone(timezone.utc).replace(tzinfo=None)  # store as naive UTC
+        if not (EPHEMERIS_START <= v.date() <= EPHEMERIS_END):
+            raise ValueError(f"must be between {EPHEMERIS_START} and {EPHEMERIS_END}")
+        return v.replace(minute=0, second=0, microsecond=0)  # the model runs on whole hours
 
 
 class SiteStats(BaseModel):
@@ -62,6 +74,8 @@ class CommsPoint(BaseModel):
 class Window(BaseModel):
     start: date
     end: date
+    start_time: str   # first landing hour that works: the suggested landing time (UTC)
+    end_time: str     # last landing hour that works (UTC)
 
 
 class Check(BaseModel):

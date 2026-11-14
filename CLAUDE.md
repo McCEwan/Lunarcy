@@ -8,11 +8,12 @@ Read `docs/ARCHITECTURE.md` first. It is the source of truth for the design and 
 - `api/evaluator.py`: `evaluate(...)`. It does no file or network I/O itself; the ephemeris provider is passed in. Thresholds live at the top.
 - `api/ephemeris.py`: Sun and Earth azimuth/elevation from a lunar lat/lon. `HorizonsEphemeris` (JPL Horizons API, disk-cached in `data/horizons_cache/`) is the default. `AnalyticEphemeris` is the offline fallback and is labelled APPROXIMATE.
 - `api/terrain.py`: loads `data/*.npy` grids at startup and does bilinear lookup.
+- `api/patch.py`: local terrain patches and horizon profiles for the 3D view, built from a height source (`heights(lat, lon)` + `source`). `SyntheticHeights` is a **PLACEHOLDER**; a LOLA-backed source replaces it via `HEIGHTS` in `api/main.py`.
 - `api/data/landers.json`: lander specs. Any value not taken from a published source goes in that entry's `estimated_fields`.
 - `api/data/sites.json`: notable landing sites (Apollo, Luna, Chang'e, CLPS past and planned...). Every entry needs a `source`. Approximate locations get `precision: "region"` and a `note`.
 - `scripts/build_grids.py`: builds the terrain grids offline. **Currently writes SYNTHETIC grids**, to be replaced with LOLA and Diviner data.
 - `scripts/fetch_moontrek_layers.py`: stitches NASA Moon Trek WMTS layers into `web/assets/moontrek/*.jpg`.
-- `web/`: plain HTML/JS modules with globe.gl from a CDN. No build step. `web/links.js` builds QuickMap, Moon Trek and Horizons deep links.
+- `web/`: plain HTML/JS modules with globe.gl from a CDN. No build step. `web/links.js` builds QuickMap, Moon Trek and Horizons deep links. `web/site3d.js` is the three.js 3D site view and timelapse (x = east, y = up, z = −north).
 - `tests/`: pytest. Run with `python -m pytest`. Tests never call the network unless you set `RUN_LIVE=1`.
 - `docs/AI_USAGE.md`: running log of how AI was used on this project.
 

@@ -58,6 +58,26 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
   - Blue Ghost Mission 2 isn't in the list because no site has been published (only "far side").
   - Elevations are against the smooth-sphere horizon. Crater rims and mountains aren't modeled, which matters most at the south pole.
 
+### 2026-11-14 · Session 3: 3D landing-site view and timelapse
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** feasibility questions first (no code), then "start on" the scene/timelapse, precise landing hour, terrain patch and horizon profile steps. Real data wherever possible; generic textures are fine for the Moon and Earth.
+- **What the AI did:**
+  - Backend: landing windows are now searched hourly, each with a suggested landing hour (`start_time`). `/evaluate` accepts `landing_time`, so the series runs from touchdown to mission end. Added `api/patch.py` with `/terrain/patch` and `/terrain/horizon`. They're built on a pluggable height source so real LOLA data can drop in, with a clearly labelled synthetic placeholder for now.
+  - Frontend: `web/site3d.js` (three.js) has a terrain mesh with curvature, sunlight and shadows from the Horizons Sun direction, the Sun and Earth at true angular size, Earth's phase from the geometry, the skyline ring, compass labels, overview and "stand at the lander" views, and a timelapse with a live readout (power, comms, time to sunset/Earthset, "behind terrain").
+  - Tests: hourly windows (the suggested hour passes, the hour before fails), `landing_time` handling, patch orientation (row 0 = north), and horizon correctness against analytic cases (flat ground gives the expected −0.08° dip; a 2 km ridge 10 km east gives about 11°, in the east only).
+- **Checks the AI ran on its own output:**
+  - In the browser: the Sun rises at azimuth 95° (east) and sets at 267° (west) at Chandrayaan-3. Daylight lasts about 15.3 days. Sunlight switches off after sunset.
+  - Earth's phase is about 80% lit at local sunrise and 30% at sunset, consistent with Moon-phase geometry.
+  - The ground view at IM-1 shows the Sun about 9° above the north-east horizon, with N to the left, as expected for azimuth 41°.
+  - Toned the placeholder hills down after the first version produced unrealistic 19–25° skylines.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:**
+  - **Terrain in the 3D view and the skyline are synthetic placeholders**, so "behind terrain" moments aren't real yet. They become real when a LOLA height source replaces `SyntheticHeights`.
+  - The `/evaluate` sunlight and Earth-visibility percentages still ignore terrain (only the 3D readout uses the skyline). They can be wired to the horizon profile once the terrain is real.
+  - The Sun is modelled as a point for lighting (the light switches at the Sun's centre), so partial-disc sunrise and sunset are approximate.
+
 ---
 
 ## Entry template

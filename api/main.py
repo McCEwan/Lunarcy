@@ -8,12 +8,13 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 
 from .ephemeris import AnalyticEphemeris, HorizonsEphemeris
 from .evaluator import evaluate
 from .models import EvaluateRequest, EvaluateResponse
+from .patch import SyntheticHeights, horizon_profile, terrain_patch
 from .terrain import Terrain
 
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +34,10 @@ EPHEM = (
     if EPHEMERIS_MODE == "analytic"
     else HorizonsEphemeris(cache_dir=ROOT / "data" / "horizons_cache")
 )
+
+# Heights for the 3D view and horizon profiles. Swap in a LOLA-backed source with
+# the same `heights(lat, lon)` / `source` interface when the real data is ready.
+HEIGHTS = SyntheticHeights()
 
 app = FastAPI(title="Lunar Planner")
 
@@ -57,6 +62,27 @@ def landers() -> list[dict]:
 def sites() -> list[dict]:
     """Curated notable landing sites: Apollo, Luna, Chang'e, CLPS (past and planned), etc."""
     return SITES
+
+
+@app.get("/terrain/patch")
+def get_terrain_patch(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+    size_km: float = Query(20.0, ge=1, le=100),
+    n: int = Query(256, ge=16, le=512),
+) -> dict:
+    """n×n local height grid around a site, for the 3D view."""
+    return terrain_patch(HEIGHTS, lat, lon, size_km * 1000, n)
+
+
+@app.get("/terrain/horizon")
+def get_terrain_horizon(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+    radius_km: float = Query(150.0, ge=5, le=400),
+) -> dict:
+    """Skyline elevation angle per degree of azimuth (clockwise from north)."""
+    return horizon_profile(HEIGHTS, lat, lon, radius_km * 1000)
 
 
 @app.post("/evaluate", response_model=EvaluateResponse, response_model_by_alias=True)
@@ -89,6 +115,7 @@ def evaluate_site(req: EvaluateRequest) -> dict:
         lander=lander,
         payload_kg=req.payload_kg,
         landing_date=req.landing_date,
+        landing_time=req.landing_time,
         sources=sources,
     )
 
