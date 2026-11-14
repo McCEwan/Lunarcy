@@ -218,7 +218,9 @@ function shortLayerName(key) {
 function setLayer(key) {
   const layer = state.layers[key];
   if (!layer) return;
-  globe.globeImageUrl(layer.file);
+  state.layerKey = key;
+  if (state.search && $('show-heatmap').checked) applyHeatmap();
+  else globe.globeImageUrl(layer.file);
   // The bump map only reads well over imagery; colored data layers look muddy with it.
   globe.bumpImageUrl(key === 'wac' ? BUMP : null);
   document.querySelectorAll('#layer-buttons .chip').forEach((b) => b.classList.toggle('on', b.dataset.layer === key));
@@ -286,23 +288,27 @@ async function loadCatalog() {
 
 // ---- Flow ----------------------------------------------------------------------
 
-async function newSite(lat, lng, catalog = null) {
+// `extra`: { name, info } for sites that aren't from the catalog (e.g. search results).
+// `background: true` creates and evaluates the site without switching to it.
+async function newSite(lat, lng, catalog = null, extra = {}, { background = false } = {}) {
   const site = {
     id: crypto.randomUUID(), lat, lng,
-    name: catalog?.name ?? null, catalog,
+    name: catalog?.name ?? extra.name ?? null, catalog, info: extra.info ?? null,
     lander: catalog?.lander_id ?? null, payload: null, landingDate: null, landingTime: null,
     terrainLevel: 'global', result: null,
   };
-  state.current = site;
-  refreshPoints();
-  render();
-  updateGlobeSky();
-  globe.pointOfView({ lat, lng, altitude: 1.6 }, 800);
-  const result = await evaluateSite(site);
-  if (result && state.current === site) {
-    site.result = result;
+  if (!background) {
+    state.current = site;
+    refreshPoints();
     render();
+    updateGlobeSky();
+    showTab('site');
+    globe.pointOfView({ lat, lng, altitude: 1.6 }, 800);
   }
+  const result = await evaluateSite(site);
+  if (result) site.result = result;
+  if (result && (state.current === site || background)) render();
+  return site;
 }
 
 // "Get detailed terrain": download ~30 m LOLA around the site, then re-evaluate with it.
@@ -340,6 +346,177 @@ function selectSite(site) {
   state.current = site;
   refreshPoints();
   render();
+  showTab('site');
+}
+
+// ---- Tabs and collapsible panels -------------------------------------------------------
+
+function showTab(name) {
+  state.tab = name;
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === name));
+  document.querySelectorAll('.tab-body').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+}
+
+function remember(key, value) {
+  try { localStorage.setItem(`lunar-${key}`, value); } catch { /* storage unavailable */ }
+}
+function recall(key) {
+  try { return localStorage.getItem(`lunar-${key}`); } catch { return null; }
+}
+
+function setPanelCollapsed(collapsed) {
+  document.body.classList.toggle('panel-collapsed', collapsed);
+  $('panel-toggle').textContent = collapsed ? '◀' : '▶';
+  $('panel-toggle').title = collapsed ? 'Show panel' : 'Hide panel';
+  remember('panel-collapsed', collapsed ? '1' : '0');
+  setTimeout(resizeGlobe, 220);   // after the slide animation
+}
+
+function setBoxCollapsed(id, collapsed) {
+  $(id).classList.toggle('collapsed', collapsed);
+  remember(`collapsed-${id}`, collapsed ? '1' : '0');
+}
+
+// ---- Landing page + site finder ---------------------------------------------------------
+
+function showLanding(show = true) {
+  $('landing').hidden = !show;
+  if (show) $('req-sun').focus();
+}
+
+async function onFind(e) {
+  e.preventDefault();
+  const body = {
+    period_start: $('req-start').value,
+    period_end: $('req-end').value,
+    min_sun_pct: Number($('req-sun').value || 0),
+    min_earth_pct: Number($('req-earth').value || 0),
+    min_avg_w_m2: Number($('req-power').value || 0),
+    max_slope_deg: Number($('req-slope').value || 90),
+    region: $('req-region').value,
+  };
+  $('req-submit').disabled = true;
+  $('req-status').className = 'small muted';
+  $('req-status').textContent = 'Searching the whole Moon… (about 10–30 s; the first search for a new period asks JPL Horizons)';
+  try {
+    const res = await fetch('/find', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const out = await res.json();
+    if (!res.ok) {
+      const d = out.detail;
+      throw new Error(Array.isArray(d) ? d.map((x) => x.msg).join(' · ') : String(d));
+    }
+    state.search = out;
+    remember('requirements', JSON.stringify(body));
+    // The analysis period follows the mission dates, so site stats match the search.
+    state.period = { mode: 'range', start: body.period_start, end: body.period_end };
+    syncPeriodInputs();
+    showLanding(false);
+    $('req-status').textContent = '';
+    renderSearch();
+    showTab('search');
+    $('heatmap-toggle-wrap').hidden = false;
+    $('show-heatmap').checked = true;
+    applyHeatmap();
+    // Re-evaluate any sites already open over the new period.
+    const todo = [...new Set([state.current, ...state.sites].filter(Boolean))];
+    await Promise.all(todo.map(async (s) => { const r = await evaluateSite(s); if (r) s.result = r; }));
+    render();
+  } catch (err) {
+    $('req-status').className = 'small error';
+    $('req-status').textContent = `Search failed: ${err.message}`;
+  } finally {
+    $('req-submit').disabled = false;
+  }
+}
+
+function syncPeriodInputs() {
+  const p = state.period;
+  document.querySelector(`input[name="period-mode"][value="${p.mode}"]`).checked = true;
+  $('period-start').value = p.start;
+  $('period-end').value = p.end ?? '';
+  $('period-end-wrap').hidden = p.mode !== 'range';
+}
+
+function renderSearch() {
+  const s = state.search;
+  $('search-empty').hidden = !!s;
+  if (!s) { $('search-summary').innerHTML = ''; $('region-list').innerHTML = ''; return; }
+  const c = s.criteria;
+  const n = s.counts;
+  const terrainNote = s.terrain.precomputed_skylines
+    ? 'Terrain (LOLA skylines) counted everywhere.'
+    : `Smooth-Moon screen; the top ${s.terrain.checked_in_stage2} regions were re-checked with LOLA terrain.`;
+  $('search-summary').innerHTML =
+    `<p><b>${esc(c.period_start)} → ${esc(c.period_end)}</b> · ${esc(c.region_label)}</p>` +
+    `<p>Needs ≥${c.min_sun_pct}% daylight · ≥${c.min_earth_pct}% Earth in view · ≥${c.min_avg_w_m2} W/m² average panel sunlight · slope ≤${c.max_slope_deg}°</p>` +
+    `<p class="muted">${n.meeting_cells.toLocaleString()} of ${n.searched_cells.toLocaleString()} grid cells (0.5°, ~15 km) meet everything, ` +
+    `about ${Math.round(n.meeting_area_km2).toLocaleString()} km² in ${n.regions} regions. ${terrainNote} Took ${s.seconds} s.</p>`;
+  if (!s.regions.length) {
+    $('region-list').innerHTML = `<li class="dim">No region meets all the requirements. Try loosening the one that's hardest:
+      outside the polar peaks, daylight above ~50% of a month isn't possible.</li>`;
+    return;
+  }
+  const lvl = (v, min) => (v >= min ? 'good' : v >= 0.85 * min ? 'warn' : 'bad');
+  $('region-list').innerHTML = s.regions.map((r, i) => `
+    <li data-region="${i}" class="${r.passes_with_terrain ? '' : 'dim'}"
+        title="${r.passes_with_terrain ? 'Best spot in this region' : 'Fails once local terrain is counted'}">
+      <b>${fmtLat(r.lat)}, ${fmtLon(r.lon)}</b>
+      <span class="muted">· ${r.area_km2.toLocaleString()} km²</span>
+      <button class="add secondary" data-add-region="${i}" title="Add to comparison">+ Compare</button>
+      <div class="stats">
+        <span class="${lvl(r.sun_pct, c.min_sun_pct)}">☀️ ${r.sun_pct}%</span>
+        <span class="${lvl(r.earth_pct, c.min_earth_pct)}">🌍 ${r.earth_pct}%</span>
+        <span class="${lvl(r.avg_w_m2, c.min_avg_w_m2)}">⚡ ${r.avg_w_m2} W/m²</span>
+        <span class="${r.slope_deg <= c.max_slope_deg ? 'good' : 'bad'}">⛰ ${r.slope_deg}°</span>
+        ${r.passes_with_terrain ? '' : '<span class="bad">fails with terrain</span>'}
+      </div>
+    </li>`).join('');
+}
+
+function regionSiteExtra(i) {
+  const r = state.search.regions[i];
+  return { name: `Search result #${i + 1}`, info: `Best spot of a ${r.area_km2.toLocaleString()} km² region from the site finder` };
+}
+
+// Heatmap: paint the search classes over the current globe texture.
+async function applyHeatmap() {
+  const s = state.search;
+  const base = state.layers[state.layerKey]?.file ?? FALLBACK_TEXTURE;
+  if (!s || !$('show-heatmap').checked) { globe.globeImageUrl(base); return; }
+  const img = await loadImage(base);
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const { nlat, nlon, classes_b64 } = s.grid;
+  const cls = Uint8Array.from(atob(classes_b64), (ch) => ch.charCodeAt(0));
+  const small = document.createElement('canvas'); small.width = nlon; small.height = nlat;
+  const sg = small.getContext('2d');
+  const data = sg.createImageData(nlon, nlat);
+  // green = meets all requirements, yellow = nearly, clear = no, dimmed = outside the search area
+  const colors = { 2: [76, 209, 138, 80], 1: [255, 204, 77, 70], 0: [0, 0, 0, 0], 255: [0, 0, 0, 110] };
+  for (let r = 0; r < nlat; r++) {
+    for (let col = 0; col < nlon; col++) {
+      const v = cls[r * nlon + col];
+      const k = ((nlat - 1 - r) * nlon + col) * 4;        // grid row 0 = south; image row 0 = north
+      const [R, G, B, A] = colors[v] ?? colors[0];
+      data.data[k] = R; data.data[k + 1] = G; data.data[k + 2] = B; data.data[k + 3] = A;
+    }
+  }
+  sg.putImageData(data, 0, 0);
+  g.imageSmoothingEnabled = true;
+  g.drawImage(small, 0, 0, W, H);
+  globe.globeImageUrl(c.toDataURL('image/jpeg', 0.88));
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => resolve(im);
+    im.onerror = reject;
+    im.src = src;
+  });
 }
 
 async function onLanderChange() {
@@ -485,12 +662,12 @@ function render() {
   if (!site) return;
 
   // Site header, metadata and external tool links (work before /evaluate returns).
-  $('site-coords').textContent = `${fmtLat(site.lat)}, ${fmtLon(site.lng)}`;
   const c = site.catalog;
+  $('site-title').innerHTML = `${esc(site.name ?? 'Custom site')} <span class="muted">${fmtLat(site.lat)}, ${fmtLon(site.lng)}</span>`;
   $('site-meta').innerHTML = c
-    ? `<b>${esc(c.name)}</b> · ${esc(c.agency)} · ${esc(c.date)} · ${esc(c.status)}<br>${esc(c.place)}` +
+    ? `${esc(c.agency)} · ${esc(c.date)} · ${esc(c.status)} · ${esc(c.place)}` +
       (c.note ? `<br><span class="muted">${esc(c.note)}</span>` : '')
-    : '<span class="muted">Custom site</span>';
+    : site.info ? `<span class="muted">${esc(site.info)}</span>` : '';
   const start = r?.sky?.[0]?.t ?? new Date().toISOString();
   const altKm = (r?.terrain?.site_elevation_m ?? 0) / 1000;
   $('site-links').innerHTML = [
@@ -519,8 +696,8 @@ function render() {
   $('site-terrain').innerHTML =
     `<span class="badge ${detailed ? 'pass' : 'level'}">${detailed ? 'Detailed terrain' : 'Global estimate'}</span> ` +
     `<span class="muted">${placeholder ? 'PLACEHOLDER terrain' : `NASA LOLA, ~${t.resolution_m.toFixed(0)} m pixels`}` +
-    ` · skyline up to ${t.skyline_max_deg.toFixed(1)}°</span><br>` +
-    `<span class="muted">Horizons site altitude: ${t.site_elevation_m >= 0 ? '+' : ''}${t.site_elevation_m.toFixed(0)} m (from LOLA)</span>`;
+    ` · skyline up to ${t.skyline_max_deg.toFixed(1)}°</span>`;
+  $('site-terrain').title = `Horizons is given the site's LOLA elevation (${t.site_elevation_m.toFixed(0)} m) as its altitude.`;
   $('get-detail-btn').hidden = detailed;
   $('get-detail-btn').textContent = t.detailed_cached
     ? 'Use detailed terrain (already downloaded)'
@@ -616,47 +793,51 @@ function render() {
     .join('');
 }
 
-// Left panel: the compared sites as a table. Columns are the values, rows the sites.
-// Every row uses the same analysis period, so the numbers are like-for-like.
+// Compare tab: a vertical table. Rows are the values, columns are the sites, so it fits
+// the side panel. Every site uses the same analysis period, so the numbers are like-for-like.
 function renderCompareList() {
   const has = state.sites.length > 0;
+  $('compare-count').textContent = has ? `(${state.sites.length})` : '';
   $('compare-empty').hidden = has;
   $('compare-table').hidden = !has;
-  if (!has) return;
+  if (!has) { $('compare-period').textContent = ''; return; }
   const day = state.period.mode === 'day';
-  $('compare-period').textContent = state.sites[0].result ? `Period: ${periodText(state.sites[0].result.period)}` : '';
-  const head = ['Site', 'Verdict', day ? 'Daylight' : 'Sunlight', day ? 'Earth in view' : 'Earth', 'Slope',
-    'Peak sun on panel', 'Elevation', 'Lander · landing', 'Terrain', ''];
-  $('compare-table').querySelector('thead').innerHTML = `<tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr>`;
-  $('compare-table').querySelector('tbody').innerHTML = state.sites.map((s) => {
-    const r = s.result;
-    const where = s.name ?? `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`;
-    const active = s === state.current ? 'active' : '';
-    const lead = `<td class="site-cell" style="border-left-color:${landerColor(s.lander)}"><b>${esc(where)}</b>` +
-      `<div class="muted">${fmtLat(s.lat)}, ${fmtLon(s.lng)}</div></td>`;
-    const remove = `<td><button class="remove" data-remove="${s.id}" title="Remove from comparison">×</button></td>`;
-    if (!r) return `<tr data-id="${s.id}" class="${active}">${lead}<td colspan="8" class="muted">calculating…</td>${remove}</tr>`;
-    const rt = rateStats(s, r);
-    const cell = (rating, text) => `<td class="${rating.level}" title="${esc(rating.why)}">${text}</td>`;
-    const lander = state.landers.find((l) => l.id === s.lander);
-    const verdict = r.pass === true ? '<span class="badge pass">PASS</span>'
-      : r.pass === false ? '<span class="badge fail">FAIL</span>' : '<span class="muted">—</span>';
-    const sun = day ? `${r.site.sun_hours.toFixed(1)} h` : fmt(r.site.sunlight_pct, 0, '%');
-    const earth = day ? `${r.site.earth_hours.toFixed(1)} h` : fmt(r.site.earth_visible_pct, 0, '%');
-    const landing = s.landingDate ? `${s.landingDate} ${s.landingTime ?? '00:00'}` : 'no landing';
-    return `<tr data-id="${s.id}" class="${active}">
-      ${lead}
-      <td>${verdict}</td>
-      ${cell(rt.sunlight, sun)}
-      ${cell(rt.earth, earth)}
-      ${cell(rt.slope, fmt(r.site.slope_deg, 1, '°'))}
-      ${cell(rt.sun_m2, fmt(Math.max(...r.power_w.map((p) => p.w_m2)), 0, ' W/m²'))}
-      <td>${fmt(r.site.elevation_m, 0, ' m')}</td>
-      <td>${esc(lander?.name ?? '—')}<div class="muted">${esc(landing)}</div></td>
-      <td>${r.terrain.level === 'detailed' ? 'detailed ~30 m' : `global ~${r.terrain.resolution_m.toFixed(0)} m`}</td>
-      ${remove}
-    </tr>`;
-  }).join('');
+  const withResult = state.sites.find((s) => s.result);
+  $('compare-period').textContent = withResult ? `Period: ${periodText(withResult.result.period)}` : '';
+
+  const cols = state.sites.map((s) => ({ s, r: s.result, rt: s.result ? rateStats(s, s.result) : null }));
+  $('compare-table').querySelector('thead').innerHTML = '<tr><th></th>' + cols.map(({ s }) => {
+    const name = s.name ?? `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`;
+    return `<th class="site-head ${s === state.current ? 'active' : ''}" data-id="${s.id}"
+      style="border-top-color:${landerColor(s.lander)}" title="Open this site">
+      ${esc(name)} <button class="remove" data-remove="${s.id}" title="Remove from comparison">×</button></th>`;
+  }).join('') + '</tr>';
+
+  const cell = (col, html, rating) => {
+    const active = col.s === state.current ? ' active-col' : '';
+    if (!col.r) return `<td class="muted${active}">…</td>`;
+    return rating
+      ? `<td class="${rating.level}${active}" title="${esc(rating.why)}">${html}</td>`
+      : `<td class="${active.trim()}">${html}</td>`;
+  };
+  const rows = [
+    ['Where', (c) => cell(c, `${fmtLat(c.s.lat)}<br>${fmtLon(c.s.lng)}`)],
+    ['Verdict', (c) => cell(c, c.r?.pass === true ? '<span class="badge pass">PASS</span>'
+      : c.r?.pass === false ? '<span class="badge fail">FAIL</span>' : '<span class="muted">no lander</span>')],
+    [day ? 'Daylight (of 24 h)' : 'Sunlight', (c) => cell(c,
+      day ? `${c.r?.site.sun_hours.toFixed(1)} h` : fmt(c.r?.site.sunlight_pct, 0, '%'), c.rt?.sunlight)],
+    [day ? 'Earth in view (of 24 h)' : 'Earth in view', (c) => cell(c,
+      day ? `${c.r?.site.earth_hours.toFixed(1)} h` : fmt(c.r?.site.earth_visible_pct, 0, '%'), c.rt?.earth)],
+    ['Avg sun on panel', (c) => cell(c, c.r ? fmt(c.r.power_w.reduce((a, p) => a + p.w_m2, 0) / c.r.power_w.length, 0, ' W/m²') : '')],
+    ['Peak sun on panel', (c) => cell(c, c.r ? fmt(Math.max(...c.r.power_w.map((p) => p.w_m2)), 0, ' W/m²') : '', c.rt?.sun_m2)],
+    ['Slope', (c) => cell(c, fmt(c.r?.site.slope_deg, 1, '°'), c.rt?.slope)],
+    ['Elevation', (c) => cell(c, fmt(c.r?.site.elevation_m, 0, ' m'))],
+    ['Lander', (c) => cell(c, esc(state.landers.find((l) => l.id === c.s.lander)?.name ?? '—'))],
+    ['Landing', (c) => cell(c, c.s.landingDate ? `${c.s.landingDate}<br>${c.s.landingTime ?? '00:00'} UTC` : '—')],
+    ['Terrain', (c) => cell(c, c.r?.terrain.level === 'detailed' ? 'detailed ~30 m' : `global ~${c.r?.terrain.resolution_m.toFixed(0)} m`)],
+  ];
+  $('compare-table').querySelector('tbody').innerHTML = rows
+    .map(([label, fn]) => `<tr><th>${label}</th>${cols.map(fn).join('')}</tr>`).join('');
 }
 
 function flyTo(site) {
@@ -713,14 +894,70 @@ $('compare-table').addEventListener('click', (e) => {
     render();
     return;
   }
-  const row = e.target.closest('tr[data-id]');
-  const site = row && state.sites.find((s) => s.id === row.dataset.id);
+  const head = e.target.closest('th[data-id]');
+  const site = head && state.sites.find((s) => s.id === head.dataset.id);
   if (site) {
     selectSite(site);
     flyTo(site);
     updateGlobeSky();
   }
 });
+
+// Tabs, panel arrow, collapsible boxes
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
+$('panel-toggle').addEventListener('click', () => setPanelCollapsed(!document.body.classList.contains('panel-collapsed')));
+document.querySelectorAll('.collapse-btn').forEach((b) => b.addEventListener('click', () => {
+  setBoxCollapsed(b.dataset.collapse, !$(b.dataset.collapse).classList.contains('collapsed'));
+}));
+
+// Landing page and search results
+$('req-form').addEventListener('submit', onFind);
+$('skip-landing').addEventListener('click', () => { showLanding(false); showTab(state.search ? 'search' : 'sites'); });
+$('edit-req').addEventListener('click', () => showLanding(true));
+$('show-heatmap').addEventListener('change', applyHeatmap);
+$('region-list').addEventListener('click', async (e) => {
+  const addIdx = e.target.dataset?.addRegion;
+  if (addIdx !== undefined) {
+    e.stopPropagation();
+    const r = state.search.regions[Number(addIdx)];
+    e.target.disabled = true;
+    e.target.textContent = 'Adding…';
+    const site = await newSite(r.lat, r.lon, null, regionSiteExtra(Number(addIdx)), { background: true });
+    if (!state.sites.includes(site)) state.sites.push(site);
+    refreshPoints();
+    render();
+    e.target.textContent = 'In comparison ✓';
+    return;
+  }
+  const li = e.target.closest('li[data-region]');
+  if (!li) return;
+  const i = Number(li.dataset.region);
+  const r = state.search.regions[i];
+  newSite(r.lat, r.lon, null, regionSiteExtra(i));
+});
+
+// Initial state: requirement defaults (or the last search), collapsed boxes, landing page.
+(function init() {
+  const today = new Date();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  $('req-start').value = iso(new Date(today.getTime() + 30 * 86400e3));
+  $('req-end').value = iso(new Date(today.getTime() + 44 * 86400e3));
+  try {
+    const last = JSON.parse(recall('requirements') ?? 'null');
+    if (last) {
+      $('req-start').value = last.period_start; $('req-end').value = last.period_end;
+      $('req-sun').value = last.min_sun_pct; $('req-earth').value = last.min_earth_pct;
+      $('req-power').value = last.min_avg_w_m2; $('req-slope').value = last.max_slope_deg;
+      $('req-region').value = last.region;
+    }
+  } catch { /* ignore bad saved data */ }
+  if (recall('panel-collapsed') === '1') setPanelCollapsed(true);
+  for (const id of ['layers', 'legend']) if (recall(`collapsed-${id}`) === '1') setBoxCollapsed(id, true);
+  syncPeriodInputs();
+  showTab('search');
+  renderSearch();
+  showLanding(true);
+})();
 
 loadLayers();
 loadLanders().then(() => { refreshPoints(); return loadCatalog(); });

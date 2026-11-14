@@ -8,11 +8,13 @@ Read `docs/ARCHITECTURE.md` first. It is the source of truth for the design and 
 - `api/evaluator.py`: `evaluate(...)`. It does no file or network I/O itself; the ephemeris provider is passed in. Thresholds live at the top.
 - `api/ephemeris.py`: Sun and Earth azimuth/elevation from a lunar lat/lon. `HorizonsEphemeris` (JPL Horizons API, disk-cached in `data/horizons_cache/`) is the default. `AnalyticEphemeris` is the offline fallback and is labelled APPROXIMATE.
 - `api/lola.py`: real NASA LOLA elevation at two levels. `LolaGlobalHeights` (LDEM_128 ~237 m, or LDEM_64, memory-mapped from `~/LunarPlannerData/lola/`; see `api/paths.py`) and on-demand ~30 m `DetailPatch`es fetched from NASA PDS by HTTP range requests and cached in `~/LunarPlannerData/lola_detail/`. Both are *height sources* (`heights(lat, lon)`, `source`, `resolution_m`).
+- `api/finder.py`: the landing-site finder behind `POST /find`. A global screen of every 0.5° cell from one Horizons sub-point series (+ precomputed skylines), then connected regions and a terrain re-check of the top ones.
 - `api/terrain.py`: site stats. Elevation and slope come from the active height source; temperature min/max still come from **PLACEHOLDER** `data/t*_k.npy` grids.
 - `api/patch.py`: local terrain patches and horizon profiles (skylines) built from any height source. `SyntheticHeights` is the labelled fallback when no LOLA grid is downloaded.
 - `api/data/landers.json`: lander specs. Any value not taken from a published source goes in that entry's `estimated_fields`.
 - `api/data/sites.json`: notable landing sites (Apollo, Luna, Chang'e, CLPS past and planned...). Every entry needs a `source`. Approximate locations get `precision: "region"` and a `note`.
 - `scripts/fetch_lola.py`: one-time 2.1 GB download of LOLA LDEM_128 (resumable; `--ppd 64` for the 531 MB grid), saved outside the project in `~/LunarPlannerData/` (override with `LUNAR_DATA_DIR`). Never put big data in the repo or OneDrive.
+- `scripts/build_skylines.py`: one-time (~10-15 min, all cores) LOLA terrain skylines for every finder grid cell → `~/LunarPlannerData/finder_skylines_0.5.npz`. The finder works without it (smooth-Moon screen + terrain re-check of the top regions).
 - `scripts/build_grids.py`: writes the **PLACEHOLDER** temperature grids (to be replaced with Diviner data).
 - `scripts/fetch_moontrek_layers.py`: stitches NASA Moon Trek WMTS layers into `web/assets/moontrek/*.jpg`.
 - `web/`: plain HTML/JS modules with globe.gl from a CDN. No build step. `web/links.js` builds QuickMap, Moon Trek and Horizons deep links. `web/site3d.js` is the three.js 3D site view and timelapse (x = east, y = up, z = −north).

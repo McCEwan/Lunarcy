@@ -19,55 +19,165 @@
 <body>
   <div id="globe"></div>
 
-  <!-- Left column over the globe: map layers, then the compared landing sites -->
-  <div id="left-col">
-    <div id="layers" class="overlay">
-      <div class="overlay-title">Map layer · NASA Moon Trek</div>
-      <div id="layer-buttons"></div>
-      <label class="check"><input type="checkbox" id="show-sites" checked> Show notable landing sites</label>
-      <label class="check"><input type="checkbox" id="real-sun" checked> Light by the real Sun · show Sun &amp; Earth</label>
-      <div id="sky-caption" class="small muted"></div>
+  <!-- Landing page: mission requirements for the site finder -->
+  <div id="landing">
+    <div class="landing-card">
+      <h1>Lunar Landing Site Finder</h1>
+      <p class="muted">Tell us what your mission needs. We search the whole Moon, using NASA LOLA terrain and JPL Horizons
+        Sun and Earth positions, and show the regions that meet your requirements.</p>
+      <form id="req-form">
+        <div class="row2">
+          <label>Mission start (UTC)<input id="req-start" type="date" min="2025-01-01" max="2050-12-31" required></label>
+          <label>Mission end (UTC)<input id="req-end" type="date" min="2025-01-01" max="2050-12-31" required></label>
+        </div>
+        <div class="row2">
+          <label>Minimum daylight (% of the period)<input id="req-sun" type="number" min="0" max="100" step="1" value="50"></label>
+          <label>Minimum Earth in view (%)<input id="req-earth" type="number" min="0" max="100" step="1" value="80"></label>
+        </div>
+        <div class="row2">
+          <label>Minimum average sunlight on a flat solar panel (W/m²)<input id="req-power" type="number" min="0" max="1361" step="10" value="100"></label>
+          <label>Maximum slope (°)<input id="req-slope" type="number" min="0" max="45" step="0.5" value="10"></label>
+        </div>
+        <label>Search area
+          <select id="req-region">
+            <option value="all">Whole Moon</option>
+            <option value="south">South polar region (below 60°S)</option>
+            <option value="north">North polar region (above 60°N)</option>
+            <option value="nearside">Near side (facing Earth)</option>
+            <option value="farside">Far side</option>
+          </select>
+        </label>
+        <p class="small muted">Daylight and Earth % are measured over your whole mission period, counting crater rims and mountains.
+          Away from the poles the Sun is up about half of each month, so 50% daylight or less is realistic there; only polar peaks
+          and rims do better. Average panel sunlight is the mean over the whole period, nights included (a flat panel facing up gets
+          1,361 W/m² at most).</p>
+        <button type="submit" id="req-submit">Find landing regions</button>
+        <p id="req-status" class="small"></p>
+        <button type="button" id="skip-landing" class="linklike">Skip, and explore the Moon freely →</button>
+      </form>
     </div>
-    <div id="compare-panel" class="overlay">
-      <div class="overlay-title">Compared landing sites</div>
-      <p id="compare-empty" class="small muted">Pick a site, then press “Add to comparison”. Click a row to fly back to it.</p>
-      <div id="compare-period" class="small muted"></div>
-      <div class="table-wrap">
-        <table id="compare-table" class="compare-table" hidden><thead></thead><tbody></tbody></table>
+  </div>
+
+  <!-- Left column over the globe: map layers (collapsible) -->
+  <div id="left-col">
+    <div id="layers" class="overlay collapsible">
+      <div class="overlay-head">
+        <span class="overlay-title">Map layer · NASA Moon Trek</span>
+        <button class="collapse-btn" data-collapse="layers" title="Hide">▾</button>
+      </div>
+      <div class="collapse-body">
+        <div id="layer-buttons"></div>
+        <label class="check"><input type="checkbox" id="show-sites" checked> Show notable landing sites</label>
+        <label class="check"><input type="checkbox" id="real-sun" checked> Light by the real Sun · show Sun &amp; Earth</label>
+        <label class="check" id="heatmap-toggle-wrap" hidden><input type="checkbox" id="show-heatmap" checked> Show search results on the globe</label>
+        <div id="sky-caption" class="small muted"></div>
       </div>
     </div>
   </div>
 
-  <!-- Colour legend for the site stats -->
-  <div id="legend" class="overlay small">
-    <div class="overlay-title">Stat colours</div>
-    <div><span class="swatch good"></span>Comfortably within limits</div>
-    <div><span class="swatch warn"></span>Close to a limit</div>
-    <div><span class="swatch bad"></span>Outside the limit / poor</div>
-    <div class="muted">Hover a stat to see its thresholds. Grey = not rated.</div>
+  <!-- Colour legend (collapsible) -->
+  <div id="legend" class="overlay small collapsible">
+    <div class="overlay-head">
+      <span class="overlay-title">Colours</span>
+      <button class="collapse-btn" data-collapse="legend" title="Hide">▾</button>
+    </div>
+    <div class="collapse-body">
+      <div><span class="swatch good"></span>Comfortably within limits · meets all requirements</div>
+      <div><span class="swatch warn"></span>Close to a limit · nearly meets them</div>
+      <div><span class="swatch bad"></span>Outside the limit / poor</div>
+      <div class="muted">Hover a stat to see its thresholds. Grey = not rated.</div>
+    </div>
   </div>
 
   <aside id="panel">
+    <button id="panel-toggle" title="Hide panel">▶</button>
     <header>
       <h1>Lunar Planner</h1>
-      <p class="hint" id="hint">Click anywhere on the Moon, pick a notable landing site, or enter coordinates.</p>
+      <div class="period-bar">
+        <span class="small muted">Period</span>
+        <label class="check"><input type="radio" name="period-mode" value="day" checked> Day</label>
+        <label class="check"><input type="radio" name="period-mode" value="range"> Range</label>
+        <span class="period-dates">
+          <input id="period-start" type="date" min="2025-01-01" max="2050-12-31" title="Start (UTC)">
+          <span id="period-end-wrap" hidden>→ <input id="period-end" type="date" min="2025-01-01" max="2050-12-31" title="End (UTC)"></span>
+        </span>
+      </div>
     </header>
 
-    <section id="period-section">
-      <h2>Analysis period</h2>
-      <div class="period-modes">
-        <label class="check"><input type="radio" name="period-mode" value="day" checked> Single day</label>
-        <label class="check"><input type="radio" name="period-mode" value="range"> Date range</label>
-      </div>
-      <div class="row2">
-        <label>Day (UTC)<input id="period-start" type="date" min="2025-01-01" max="2050-12-31"></label>
-        <label id="period-end-wrap" hidden>To (UTC)<input id="period-end" type="date" min="2025-01-01" max="2050-12-31"></label>
-      </div>
-      <p class="small muted">Sunlight, Earth contact and the other stats for every site use this period. A single day shows hours of daylight and of Earth in view out of 24.</p>
-    </section>
+    <nav class="tabs">
+      <button class="tab" data-tab="search">Search</button>
+      <button class="tab" data-tab="site">Site</button>
+      <button class="tab" data-tab="compare">Compare <span id="compare-count" class="count"></span></button>
+      <button class="tab" data-tab="sites">Sites</button>
+    </nav>
 
-    <section id="pick-section">
-      <h2>Notable landing sites</h2>
+    <!-- Search results -->
+    <div class="tab-body" data-tab="search">
+      <p id="search-empty" class="small muted">No search yet. Enter your mission requirements to find suitable landing regions.</p>
+      <div id="search-summary" class="small"></div>
+      <button id="edit-req" class="secondary">Edit mission requirements</button>
+      <ol id="region-list" class="region-list"></ol>
+    </div>
+
+    <!-- The selected site -->
+    <div class="tab-body" data-tab="site">
+      <p class="hint" id="hint">Pick a search result, click anywhere on the Moon, or choose a notable site in the Sites tab.</p>
+      <section id="site-section" hidden>
+        <h2 id="site-title"></h2>
+        <div id="site-meta" class="small"></div>
+        <div id="site-terrain" class="small site-terrain"></div>
+        <button id="get-detail-btn" class="secondary" hidden>Get detailed terrain</button>
+        <div id="detail-status" class="small muted"></div>
+        <div id="sky-now" class="sky-now"></div>
+        <div id="site-period" class="small muted"></div>
+        <div class="tiles" id="site-tiles"></div>
+        <div class="btn-row">
+          <button id="view3d-btn" disabled>Open 3D view</button>
+          <button id="compare-btn" class="secondary" disabled>Add to comparison</button>
+        </div>
+        <div id="site-links" class="links small"></div>
+      </section>
+
+      <section id="mission-section" hidden>
+        <h2>Mission</h2>
+        <label>Lander
+          <select id="lander-select"><option value="">Choose a lander</option></select>
+        </label>
+        <div id="lander-facts" class="muted small"></div>
+        <label>Payload (kg)
+          <input id="payload-input" type="number" min="0" step="1" placeholder="optional">
+        </label>
+        <div id="windows" class="small"></div>
+        <div class="row2">
+          <label>Landing date<input id="date-input" type="date"></label>
+          <label>Time (UTC)<input id="time-input" type="time" step="3600"></label>
+        </div>
+        <button id="evaluate-btn" disabled>Evaluate mission</button>
+      </section>
+
+      <section id="result-section" hidden>
+        <h2>Verdict <span id="verdict" class="badge"></span></h2>
+        <p id="launch" class="small muted"></p>
+        <ul id="checks" class="checks"></ul>
+      </section>
+
+      <details id="sources-box" hidden>
+        <summary>Sources</summary>
+        <ul id="sources" class="small muted"></ul>
+      </details>
+    </div>
+
+    <!-- Comparison: one row per value, one column per site -->
+    <div class="tab-body" data-tab="compare">
+      <p id="compare-empty" class="small muted">Add sites with “Add to comparison” (Site tab) or from the search results. Click a site name to open it.</p>
+      <div id="compare-period" class="small muted"></div>
+      <div class="table-wrap">
+        <table id="compare-table" class="compare-table vertical" hidden><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- Notable landing sites + custom coordinates -->
+    <div class="tab-body" data-tab="sites">
       <div id="site-filters" class="chips"></div>
       <ul id="site-list" class="site-list"></ul>
       <form id="coord-form" class="coord-form">
@@ -75,57 +185,10 @@
         <input id="coord-lon" type="number" step="any" min="-180" max="180" placeholder="Lon (−180 to 180, E+)" required>
         <button type="submit">Go</button>
       </form>
-    </section>
-
-    <section id="site-section" hidden>
-      <h2>Site <span id="site-coords" class="muted"></span></h2>
-      <div id="site-meta" class="small"></div>
-      <div id="site-terrain" class="small site-terrain"></div>
-      <button id="get-detail-btn" class="secondary" hidden>Get detailed terrain</button>
-      <div id="detail-status" class="small muted"></div>
-      <div id="sky-now" class="sky-now"></div>
-      <div id="site-period" class="small muted"></div>
-      <div class="tiles" id="site-tiles"></div>
-      <div id="site-links" class="links small"></div>
-      <button id="view3d-btn" disabled>Open 3D view</button>
-      <button id="compare-btn" class="secondary" disabled>Add to comparison</button>
-      <!-- TODO (frontend): sky chart (sun_az/sun_el, earth_az/earth_el), power chart, comms strip -->
-    </section>
-
-    <section id="mission-section" hidden>
-      <h2>Mission</h2>
-      <label>Lander
-        <select id="lander-select"><option value="">Choose a lander</option></select>
-      </label>
-      <div id="lander-facts" class="muted small"></div>
-      <label>Payload (kg)
-        <input id="payload-input" type="number" min="0" step="1" placeholder="optional">
-      </label>
-      <div id="windows" class="small"></div>
-      <div class="row2">
-        <label>Landing date
-          <input id="date-input" type="date">
-        </label>
-        <label>Time (UTC)
-          <input id="time-input" type="time" step="3600">
-        </label>
-      </div>
-      <button id="evaluate-btn" disabled>Evaluate mission</button>
-    </section>
-
-    <section id="result-section" hidden>
-      <h2>Verdict <span id="verdict" class="badge"></span></h2>
-      <p id="launch" class="small muted"></p>
-      <ul id="checks" class="checks"></ul>
-    </section>
+    </div>
 
     <p id="loading" class="small muted" hidden>Asking JPL Horizons…</p>
     <p id="error" class="error" hidden></p>
-
-    <details id="sources-box" hidden>
-      <summary>Sources</summary>
-      <ul id="sources" class="small muted"></ul>
-    </details>
   </aside>
 
   <!-- 3D site view (web/site3d.js) -->

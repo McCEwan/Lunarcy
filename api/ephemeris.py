@@ -118,6 +118,45 @@ class HorizonsEphemeris:
         self._memory[key] = data
         return data
 
+    def subpoint_series(self, times: np.ndarray) -> dict:
+        """Sub-solar and sub-Earth points (and Earth distance) at each time: the inputs
+        the site finder needs to work out Sun/Earth positions for every spot at once."""
+        start, step_min, n = _grid_params(times)
+        key = f"subseries-{start}-{step_min}-{n}".replace(":", "")
+        if key in self._memory:
+            return self._memory[key]
+        path = self.cache_dir / f"{key}.json" if self.cache_dir else None
+        try:
+            if path and path.exists():
+                data = json.loads(path.read_text())
+            else:
+                stop = start + np.timedelta64(step_min * (n - 1), "m")
+                params = {
+                    "format": "json", "COMMAND": "'301'", "OBJ_DATA": "'NO'", "MAKE_EPHEM": "'YES'",
+                    "EPHEM_TYPE": "'OBSERVER'", "CENTER": "'500@399'",
+                    "START_TIME": f"'{_fmt_time(start)}'", "STOP_TIME": f"'{_fmt_time(stop)}'",
+                    "STEP_SIZE": f"'{step_min}m'", "QUANTITIES": "'14,15,20'", "RANGE_UNITS": "'KM'",
+                    "ANG_FORMAT": "'DEG'", "CSV_FORMAT": "'YES'",
+                }
+                req = urllib.request.Request(HORIZONS_URL + "?" + urllib.parse.urlencode(params),
+                                             headers={"User-Agent": "lunar-planner-hackathon"})
+                with urllib.request.urlopen(req, timeout=self.timeout_s * 2) as resp:
+                    payload = json.load(resp)
+                if "error" in payload:
+                    raise RuntimeError(payload["error"])
+                data = parse_horizons_subpoint_series(payload["result"])
+                if len(data["sun_lat"]) != n:
+                    raise RuntimeError(f"Horizons returned {len(data['sun_lat'])} rows, expected {n}")
+                data["source"] = "NASA/JPL Horizons System (sub-solar/sub-Earth points and Earth distance)"
+                if path:
+                    path.write_text(json.dumps(data))
+        except Exception as exc:
+            log.warning("Horizons subpoint series failed (%s); using analytic fallback", exc)
+            data = self.fallback.subpoint_series(times)
+            data["source"] = FALLBACK_SOURCE
+        self._memory[key] = data
+        return data
+
     def _cached_or_fetch(self, lat: float, lon: float, alt_m: float, times: np.ndarray) -> dict:
         start, step_min, n = _grid_params(times)
         # alt 0 keeps the original key so earlier cache files stay valid
@@ -174,6 +213,21 @@ def horizons_params(body: str, lat: float, lon: float, start, stop, step_min: in
         "ANG_FORMAT": "'DEG'",
         "CSV_FORMAT": "'YES'",
     }
+
+
+def parse_horizons_subpoint_series(result: str) -> dict:
+    """All rows of a QUANTITIES='14,15,20' table (RANGE_UNITS='KM')."""
+    body = result[result.index("$$SOE") + 5 : result.index("$$EOE")]
+    out = {k: [] for k in ("earth_lon", "earth_lat", "sun_lon", "sun_lat", "earth_km")}
+    for line in body.strip().splitlines():
+        nums = [float(f) for f in (x.strip() for x in line.split(",")[1:]) if _is_number(f)]
+        e_lon, e_lat, s_lon, s_lat, delta = nums[-6:-1]
+        out["earth_lon"].append(round(e_lon, 4))
+        out["earth_lat"].append(round(e_lat, 4))
+        out["sun_lon"].append(round(s_lon, 4))
+        out["sun_lat"].append(round(s_lat, 4))
+        out["earth_km"].append(round(delta, 1))
+    return out
 
 
 def parse_horizons_subpoints(result: str) -> dict:
@@ -247,6 +301,18 @@ class AnalyticEphemeris:
             "source": ANALYTIC_SOURCE,
             "time": str(t.astype("datetime64[m]")) + "Z",
         }
+
+
+def _analytic_subpoint_series(times: np.ndarray) -> dict:
+    (s_lat, s_lon), (e_lat, e_lon) = _analytic_subpoints(times.astype("datetime64[s]"))
+    return {
+        "sun_lat": list(np.round(s_lat, 4)), "sun_lon": list(np.round(s_lon, 4)),
+        "earth_lat": list(np.round(e_lat, 4)), "earth_lon": list(np.round(e_lon, 4)),
+        "earth_km": [384400.0] * len(times), "source": ANALYTIC_SOURCE,
+    }
+
+
+AnalyticEphemeris.subpoint_series = lambda self, times: _analytic_subpoint_series(times)  # noqa: E731
 
 
 def _analytic_subpoints(times: np.ndarray):

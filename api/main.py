@@ -16,9 +16,10 @@ from fastapi.staticfiles import StaticFiles
 from .ephemeris import AnalyticEphemeris, HorizonsEphemeris
 from .evaluator import evaluate
 from .lola import DetailedHeights, DetailStore, LolaGlobalHeights
-from .models import EvaluateRequest, EvaluateResponse
+from .finder import Criteria, Skylines, find_regions
+from .models import EvaluateRequest, EvaluateResponse, FindRequest
 from .patch import SyntheticHeights, horizon_profile, terrain_patch
-from .paths import PROJECT_DATA, lola_detail_dir, lola_dir
+from .paths import PROJECT_DATA, big_data_dir, lola_detail_dir, lola_dir
 from .terrain import Terrain
 
 logging.basicConfig(level=logging.INFO)
@@ -151,6 +152,26 @@ def sky_subpoints(time: datetime | None = None) -> dict:
     if when.tzinfo is not None:
         when = when.astimezone(timezone.utc).replace(tzinfo=None)
     return EPHEM.subpoints(np.datetime64(when, "h"))
+
+
+_skylines: Skylines | None = None
+
+
+def finder_skylines() -> Skylines:
+    """Precomputed skylines (scripts/build_skylines.py), loaded on first use, reloaded if
+    the file appears later."""
+    global _skylines
+    if _skylines is None or not _skylines.loaded:
+        _skylines = Skylines(big_data_dir() / "finder_skylines_0.5.npz")
+    return _skylines
+
+
+@app.post("/find")
+def find(req: FindRequest) -> dict:
+    """Search the whole Moon for regions meeting the mission requirements (api/finder.py)."""
+    crit = Criteria(req.period_start, req.period_end, req.min_sun_pct, req.min_earth_pct,
+                    req.min_avg_w_m2, req.max_slope_deg, req.region)
+    return find_regions(crit, EPHEM, GLOBAL_HEIGHTS, finder_skylines())
 
 
 @app.post("/evaluate", response_model=EvaluateResponse, response_model_by_alias=True)

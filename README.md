@@ -20,6 +20,7 @@ python -m venv .venv
 pip install -r requirements.txt
 python scripts/fetch_lola.py       # once: 2.1 GB NASA LOLA global elevation into ~/LunarPlannerData/
 python scripts/build_grids.py      # once: placeholder temperature grids
+python scripts/build_skylines.py   # once, optional (~10-15 min): terrain skylines for the site finder
 uvicorn api.main:app --reload
 ```
 
@@ -41,6 +42,7 @@ The Moon Trek textures are already in `web/assets/moontrek/`. Rebuild them with 
 | Globe textures | **Real:** NASA Moon Trek layers |
 | Lander specs (`api/data/landers.json`) | Partly real. Unpublished values are listed in `estimated_fields`. |
 | Frontend (`web/`) | Working: globe, layers, site catalog, links, colour-coded stats with legend, lander, windows with suggested landing hour, checks, compared-sites panel on the left. Charts still TODO. |
+| Site finder (landing page, `POST /find`) | Working: whole-Moon search in ~10 s from mission requirements, with a globe heatmap and ranked regions. Terrain-aware everywhere once `build_skylines.py` has run. |
 | 3D site view + timelapse (`web/site3d.js`) | Working, on **real** LOLA terrain (global or detailed) with Sun/Earth from Horizons. Moon and Earth surfaces are generic textures by design. |
 
 ## Splitting the work

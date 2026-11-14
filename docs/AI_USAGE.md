@@ -147,6 +147,28 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
   - Hours come from hourly samples with linear interpolation of the crossing, so they're accurate to roughly ±0.1–0.2 h for a low Sun.
   - Long ranges (up to 366 days) make one Horizons request of up to ~8,800 rows per body the first time.
 
+### 2026-11-14 · Session 7: landing-site finder, landing page, tabbed panel (branch `feature/site-finder`)
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** a feasibility question ("search the Moon for regions meeting sunlight/Earth/power needs"), then: build it on a branch, add a landing page for the mission requirements, de-duplicate the right panel and move the comparison into a right-side tab, add arrows to hide panels, and make the comparison more vertical.
+- **What the AI did:**
+  - `api/finder.py` + `POST /find`. One Horizons query of sub-solar/sub-Earth points and Earth distance for the period, then Sun/Earth elevation for all 259,200 cells of a 0.5° grid by vector maths (Earth parallax included). Then daylight %, Earth %, mean panel sunlight and LOLA slope per cell; connected regions; a terrain re-check of the top regions.
+  - `scripts/build_skylines.py`: precomputes LOLA terrain skylines for every cell (all CPU cores, ~10–15 min), so the global screen counts crater rims and peaks everywhere.
+  - Frontend: a landing page with the requirements form; a globe heatmap (green/yellow/dimmed); a right panel with tabs (Search, Site, Compare, Sites) and a compact period bar; collapse arrows on the right panel, the map-layer box and the legend; a vertical comparison table (values × sites); duplicate lines removed (terrain line merged, altitude moved to a tooltip, coordinates in the title).
+- **Checks the AI ran on its own output:**
+  - Without terrain, a south-pole search for ≥60% daylight over a month finds nothing, which is correct for a smooth sphere (the Sun is up at most ~50% of a month). That shows why skylines are needed.
+  - The finder agrees with the full per-site evaluation at the same spot: 570.1 vs 570 W/m² mean panel sunlight, 99.2% vs 99% daylight.
+  - With skylines for all 259,200 cells loaded, results are terrain-aware everywhere. Searches take 12–25 s; the AI cut the original ~40 s by only computing the Sun/Earth azimuth where the body is between a cell's lowest and highest skyline point (results unchanged).
+  - Even with terrain, ≥60% daylight over January 2027 finds no south-polar cell. The best-lit polar ridges are ~1 km wide, far smaller than a 15 km cell, and the slope limit excludes rims. This is a stated limitation, not a bug.
+  - Smooth-Moon search ~9 s. In the browser: the landing page, search results, heatmap, opening a result, "+ Compare", the vertical comparison and all collapse arrows work.
+  - Tests: 75 passing (finder geometry, skyline blocking, region wrap-around, end-to-end on a coarse grid, validation).
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:**
+  - 0.5° cells (~15 km) average away small features, notably the ~1 km near-permanently-lit polar ridges. Use "Get detailed terrain" on a result for the 30 m check.
+  - Skylines are 4° azimuth steps from the ~237 m global grid, and the Sun is treated as a point.
+  - Big regions are summarised by their best cell; "area" is the whole connected region.
+
 ---
 
 ## Entry template

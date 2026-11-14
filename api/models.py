@@ -58,6 +58,28 @@ class EvaluateRequest(BaseModel):
         return v.replace(minute=0, second=0, microsecond=0)  # the model runs on whole hours
 
 
+class FindRequest(BaseModel):
+    """Mission requirements for the landing-site finder (api/finder.py)."""
+    period_start: date
+    period_end: date
+    min_sun_pct: float = Field(0, ge=0, le=100)
+    min_earth_pct: float = Field(0, ge=0, le=100)
+    min_avg_w_m2: float = Field(0, ge=0, le=1361)    # mean sunlight on a flat panel over the period
+    max_slope_deg: float = Field(15, ge=0, le=90)
+    region: Literal["all", "south", "north", "nearside", "farside"] = "all"
+
+    @model_validator(mode="after")
+    def check_dates(self):
+        if self.period_end < self.period_start:
+            raise ValueError("period_end is before period_start")
+        if (self.period_end - self.period_start).days + 1 > MAX_PERIOD_DAYS:
+            raise ValueError(f"the period can be at most {MAX_PERIOD_DAYS} days")
+        for d in (self.period_start, self.period_end):
+            if not (EPHEMERIS_START <= d <= EPHEMERIS_END):
+                raise ValueError(f"dates must be between {EPHEMERIS_START} and {EPHEMERIS_END}")
+        return self
+
+
 class SiteStats(BaseModel):
     slope_deg: float | None
     slope_baseline_m: float | None      # distance the slope was measured over
