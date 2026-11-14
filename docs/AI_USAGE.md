@@ -129,6 +129,24 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
   - Teammates must set up `~/LunarPlannerData` themselves (`python scripts/fetch_lola.py`).
 - **Follow-up (same session):** the user noticed the poles looked flat on the globe. The AI measured it: the real-Sun lighting from Session 4 (fill light 0.45) cut fine crater detail near 80°S from 16.9 to 9.3, because the Sun is always within ~1.5° of the polar horizon. It raised the fill light to 1.8 and lowered the Sun to 2.3. In a test, similar settings brought pole detail back to ~17–19, and day and night are still visibly different (checked by screenshot). The Moon Trek image itself is genuinely smeared within ~5° of the pole; lighting can't fix that.
 
+### 2026-11-14 · Session 6: analysis period (single day / date range) and comparison table
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** "have the data be based on a certain day … a single day, or a range … if the user selects the day option the sunlight % is presented as hours of darkness/daylight in that 24 hr period, same with Earth" and "make the comparison UI fill in like a chart, values as headers, sites as rows". This followed the user's question about which period "30%" referred to; the app didn't say.
+- **What the AI did:**
+  - `/evaluate` takes `period_start`/`period_end` and returns a `period` block plus `sun_hours`/`earth_hours` (and flat-horizon versions). Hours interpolate the rise/set moment within the hour. Mission pass/fail checks still use the mission window when a different period is chosen.
+  - Frontend: a global "Analysis period" picker (single day by default, today), hours out of 24 in day mode, "Stats for …" labels, a Sun/Earth status that describes the start of the period when it isn't "now", and period-aware colour thresholds.
+  - Comparison: the left panel became a table (sites × values), re-evaluated together whenever the period changes, with clickable rows that fly the globe to the site.
+- **Checks the AI ran on its own output:**
+  - On 2026-11-14 (near new Moon), Chang'e 4 on the far side shows 24 h of daylight and 0 h of Earth, while near-side Apollo 11 and IM-1 show 0 h of daylight. That's consistent with the lunar phase.
+  - Over the 30-day range, Apollo 11 and Chang'e 4 both show ~49% sunlight (half a lunar day, as expected), and IM-1 31% (polar terrain).
+  - Tests: 66 passing, including period validation, hours interpolation, and mission checks staying unchanged when the analysis period differs.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:**
+  - Hours come from hourly samples with linear interpolation of the crossing, so they're accurate to roughly ±0.1–0.2 h for a low Sun.
+  - Long ranges (up to 366 days) make one Horizons request of up to ~8,800 rows per body the first time.
+
 ---
 
 ## Entry template

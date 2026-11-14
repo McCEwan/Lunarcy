@@ -30,8 +30,11 @@
     </div>
     <div id="compare-panel" class="overlay">
       <div class="overlay-title">Compared landing sites</div>
-      <p id="compare-empty" class="small muted">Pick a site, then press “Add to comparison”. Click a site here to fly back to it.</p>
-      <ul id="compare-list" class="compare"></ul>
+      <p id="compare-empty" class="small muted">Pick a site, then press “Add to comparison”. Click a row to fly back to it.</p>
+      <div id="compare-period" class="small muted"></div>
+      <div class="table-wrap">
+        <table id="compare-table" class="compare-table" hidden><thead></thead><tbody></tbody></table>
+      </div>
     </div>
   </div>
 
@@ -49,6 +52,19 @@
       <h1>Lunar Planner</h1>
       <p class="hint" id="hint">Click anywhere on the Moon, pick a notable landing site, or enter coordinates.</p>
     </header>
+
+    <section id="period-section">
+      <h2>Analysis period</h2>
+      <div class="period-modes">
+        <label class="check"><input type="radio" name="period-mode" value="day" checked> Single day</label>
+        <label class="check"><input type="radio" name="period-mode" value="range"> Date range</label>
+      </div>
+      <div class="row2">
+        <label>Day (UTC)<input id="period-start" type="date" min="2025-01-01" max="2050-12-31"></label>
+        <label id="period-end-wrap" hidden>To (UTC)<input id="period-end" type="date" min="2025-01-01" max="2050-12-31"></label>
+      </div>
+      <p class="small muted">Sunlight, Earth contact and the other stats for every site use this period. A single day shows hours of daylight and of Earth in view out of 24.</p>
+    </section>
 
     <section id="pick-section">
       <h2>Notable landing sites</h2>
@@ -68,6 +84,7 @@
       <button id="get-detail-btn" class="secondary" hidden>Get detailed terrain</button>
       <div id="detail-status" class="small muted"></div>
       <div id="sky-now" class="sky-now"></div>
+      <div id="site-period" class="small muted"></div>
       <div class="tiles" id="site-tiles"></div>
       <div id="site-links" class="links small"></div>
       <button id="view3d-btn" disabled>Open 3D view</button>

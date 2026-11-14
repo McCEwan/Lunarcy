@@ -24,6 +24,8 @@ const state = {
   sites: [],         // comparison list: { id, lat, lng, name, catalog, lander, payload, landingDate, landingTime, result }
   current: null,     // the site being worked on (may or may not be in `sites`)
   filter: 'all',
+  // Analysis period for every site's stats (and the comparison table): one UTC day or a range.
+  period: { mode: 'day', start: new Date().toISOString().slice(0, 10), end: null },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -39,7 +41,8 @@ const statusColor = (s) => (s.status === 'planned' ? '#5ee1ff' : '#ffd166');
 function rateStats(site, r) {
   const s = r.site;
   const lander = state.landers.find((l) => l.id === site.lander);
-  const mission = Boolean(site.lander && site.landingDate);   // series covers the mission, not a lunar day
+  const kind = r.period?.kind ?? 'lunar_day';
+  const longPeriod = kind === 'lunar_day' || (kind === 'range' && r.period.hours >= 25 * 24);
   const slopeLimit = lander?.max_slope_deg ?? 10;
   const peakSun = Math.max(...r.power_w.map((p) => p.w_m2));
   const band = (v, good, warn, higherIsBetter = true) => {
@@ -47,11 +50,21 @@ function rateStats(site, r) {
     return higherIsBetter ? (v >= good ? 'good' : v >= warn ? 'warn' : 'bad')
                           : (v <= good ? 'good' : v <= warn ? 'warn' : 'bad');
   };
+  let sunlight;
+  if (kind === 'day') {
+    sunlight = { level: band(s.sun_hours, 18, 6), why: 'Daylight in the 24 h day: green ≥18 h, yellow 6–18 h (Sun rises or sets that day), red <6 h' };
+  } else if (kind === 'mission') {
+    sunlight = { level: band(s.sunlight_pct, 75, 60), why: 'Over the mission: green ≥75%, yellow 60–75%, red <60% (fails the 60% check)' };
+  } else if (longPeriod) {
+    sunlight = { level: band(s.sunlight_pct, 45, 30), why: 'Over a month or more (the Sun is up at most ~50% of a lunar day away from the poles): green ≥45%, yellow 30–45%, red <30%' };
+  } else {
+    sunlight = { level: band(s.sunlight_pct, 70, 40), why: 'Over this date range: green ≥70%, yellow 40–70%, red <40%' };
+  }
   return {
-    sunlight: mission
-      ? { level: band(s.sunlight_pct, 75, 60), why: 'Over the mission: green ≥75%, yellow 60–75%, red <60% (fails the 60% check)' }
-      : { level: band(s.sunlight_pct, 45, 30), why: 'Over a lunar day (the Sun is up at most ~50% away from the poles): green ≥45%, yellow 30–45%, red <30%' },
-    earth: { level: band(s.earth_visible_pct, 95, 80), why: 'Direct-to-Earth comms: green ≥95%, yellow 80–95%, red <80% (fails the 80% check)' },
+    sunlight,
+    earth: kind === 'day'
+      ? { level: band(s.earth_hours, 22.8, 19.2), why: 'Earth in view in the 24 h day: green ≥22.8 h (95%), yellow 19.2–22.8 h, red <19.2 h (80%)' }
+      : { level: band(s.earth_visible_pct, 95, 80), why: 'Direct-to-Earth comms: green ≥95%, yellow 80–95%, red <80% (fails the 80% check)' },
     slope: {
       level: band(s.slope_deg, 0.7 * slopeLimit, slopeLimit, false),
       why: `${lander ? lander.name : 'Typical lander'} limit ${slopeLimit}°: green ≤${(0.7 * slopeLimit).toFixed(0)}°, yellow up to ${slopeLimit}°, red above`,
@@ -213,13 +226,19 @@ function setLayer(key) {
 
 // ---- API ---------------------------------------------------------------------
 
-async function evaluateSite(site) {
+// `mission: true` asks for the series over the mission (landing → mission end) instead of
+// the analysis period; the 3D timelapse uses that when a landing has been chosen.
+async function evaluateSite(site, { mission = false } = {}) {
   const body = { lat: site.lat, lon: site.lng };
   if (site.lander) body.lander_id = site.lander;
   if (site.payload !== null && site.payload !== '') body.payload_kg = Number(site.payload);
   if (site.landingDate && site.landingTime) body.landing_time = `${site.landingDate}T${site.landingTime}:00Z`;
   else if (site.landingDate) body.landing_date = site.landingDate;
   body.terrain_level = site.terrainLevel ?? 'global';
+  if (!mission) {
+    body.period_start = state.period.start;
+    if (state.period.mode === 'range' && state.period.end) body.period_end = state.period.end;
+  }
 
   showError(null);
   $('loading').hidden = false;
@@ -346,15 +365,19 @@ async function onEvaluate() {
   updateGlobeSky();
 }
 
-function onOpen3d(initialT = 0) {
+async function onOpen3d(initialT = 0) {
   const site = state.current;
   if (!site?.result) return;
+  const landed = Boolean(site.lander && site.landingDate);
+  // With a landing chosen, the timelapse plays the mission; otherwise the analysis period.
+  const result = landed ? (await evaluateSite(site, { mission: true })) : site.result;
+  if (!result) return;
   open3dView({
     title: site.name ?? 'Custom site',
     lat: site.lat,
     lon: site.lng,
-    result: site.result,
-    landed: Boolean(site.lander && site.landingDate),
+    result,
+    landed,
     level: site.terrainLevel ?? 'global',
     initialT,
     // The 3D view's own "Get detailed terrain" button: fetch, re-evaluate, reopen at the same moment.
@@ -363,6 +386,37 @@ function onOpen3d(initialT = 0) {
       if (state.current === site && site.terrainLevel === 'detailed') onOpen3d(t);
     },
   });
+}
+
+// ---- Analysis period ----------------------------------------------------------------
+
+// Human text for a response's `period` block.
+function periodText(p) {
+  const d = (iso) => iso.slice(0, 10);
+  const lastDay = new Date(Date.parse(p.end) - 1).toISOString().slice(0, 10);
+  if (p.kind === 'day') return `${d(p.start)} (24 h, UTC)`;
+  if (p.kind === 'mission') return `the mission, ${p.start.replace('T', ' ').replace('Z', '')} UTC + ${(p.hours / 24).toFixed(0)} days`;
+  if (p.kind === 'lunar_day') return `the next lunar day from ${d(p.start)}`;
+  return `${d(p.start)} → ${lastDay} (${(p.hours / 24).toFixed(0)} days, UTC)`;
+}
+
+async function onPeriodChange() {
+  const mode = document.querySelector('input[name="period-mode"]:checked').value;
+  const start = $('period-start').value;
+  let end = $('period-end').value;
+  $('period-end-wrap').hidden = mode !== 'range';
+  if (!start) return;
+  if (mode === 'range') {
+    if (!end || end < start) { end = start; $('period-end').value = start; }
+  }
+  state.period = { mode, start, end: mode === 'range' ? end : null };
+  // Re-evaluate every site we're showing so the comparison stays like-for-like.
+  const todo = [...new Set([state.current, ...state.sites].filter(Boolean))];
+  await Promise.all(todo.map(async (s) => {
+    const r = await evaluateSite(s);
+    if (r) s.result = r;
+  }));
+  render();
 }
 
 function onAddToComparison() {
@@ -389,29 +443,36 @@ function renderCatalog() {
     </li>`).join('');
 }
 
-// "Sun up · sets in 3.2 days" style summary, relative to now.
+// Sun/Earth status: "right now" if now falls in the analysis period, otherwise at its start,
+// with the next rise/set inside the period.
 function skyNow(r) {
   const now = Date.now();
-  const first = r.sky[0];
-  const until = (iso) => {
+  const start = Date.parse(r.period.start), end = Date.parse(r.period.end);
+  const live = now >= start && now < end;
+  const ref = live ? now : start;
+  const when = (iso) => {
     if (!iso) return null;
-    const h = (new Date(iso) - now) / 3600e3;
-    return h < 48 ? `${h.toFixed(0)} h` : `${(h / 24).toFixed(1)} days`;
+    if (live) {
+      const h = (Date.parse(iso) - now) / 3600e3;
+      return `in ${h < 48 ? `${h.toFixed(0)} h` : `${(h / 24).toFixed(1)} days`}`;
+    }
+    return `at ${iso.replace('T', ' ').replace('Z', '')} UTC`;
   };
-  // The series starts at 00:00 UTC on the start date, so use the sample nearest to now.
-  const idx = Math.max(0, Math.min(r.sky.length - 1, Math.round((now - new Date(first.t)) / 3600e3)));
+  const idx = Math.max(0, Math.min(r.sky.length - 1, Math.round((ref - start) / 3600e3)));
   const at = r.sky[idx];
-  const ev = r.events;   // rise/set times already account for terrain
+  const ev = r.events;   // first rise/set in the period; already accounts for terrain
   const status = (name, el, visible) => (visible
     ? `${name} up (${el.toFixed(1)}°)`
     : el > 0 ? `${name} behind terrain (${el.toFixed(1)}° up, but below the skyline)` : `${name} below the horizon`);
+  const rest = ' all period';
   const sunText = `☀️ ${status('Sun', at.sun_el, at.sun_visible)}` + (at.sun_visible
-    ? (ev.sunset ? ` · sets in ${until(ev.sunset)}` : ' all period')
-    : (ev.sunrise ? ` · appears in ${until(ev.sunrise)}` : ' all period'));
+    ? (ev.sunset ? ` · sets ${when(ev.sunset)}` : rest)
+    : (ev.sunrise ? ` · appears ${when(ev.sunrise)}` : rest));
   const earthText = `🌍 ${status('Earth', at.earth_el, at.earth_visible)}` + (at.earth_visible
-    ? (ev.earthset ? ` · sets in ${until(ev.earthset)}` : ' all period')
-    : (ev.earthrise ? ` · appears in ${until(ev.earthrise)}` : ' all period'));
-  return `<div>${sunText}</div><div>${earthText}</div>`;
+    ? (ev.earthset ? ` · sets ${when(ev.earthset)}` : rest)
+    : (ev.earthrise ? ` · appears ${when(ev.earthrise)}` : rest));
+  const head = live ? '' : `<div class="muted small">At the start of the period (${r.period.start.replace('T', ' ').replace('Z', '')} UTC):</div>`;
+  return `${head}<div>${sunText}</div><div>${earthText}</div>`;
 }
 
 function render() {
@@ -472,11 +533,21 @@ function render() {
   const s = r.site;
   const temp = s.temp_range_k ? `${s.temp_range_k[0].toFixed(0)}–${s.temp_range_k[1].toFixed(0)} K` : '—';
   const vsFlat = (v, flat) => (Math.abs(v - flat) >= 0.5 ? `<div class="sub">flat horizon: ${flat.toFixed(0)}%</div>` : '');
+  const vsFlatH = (v, flat) => (Math.abs(v - flat) >= 0.1 ? ` · flat horizon: ${flat.toFixed(1)} h` : '');
   const rating = rateStats(site, r);
   const peakSun = Math.max(...r.power_w.map((p) => p.w_m2));
+  const day = r.period.kind === 'day';
+  const H = r.period.hours;
+  const sunTile = day
+    ? ['Daylight (24 h)', `${s.sun_hours.toFixed(1)} h`, `<div class="sub">${(H - s.sun_hours).toFixed(1)} h dark${vsFlatH(s.sun_hours, s.sun_hours_flat)}</div>`, rating.sunlight]
+    : ['Sunlight', fmt(s.sunlight_pct, 0, '%'), `<div class="sub">${s.sun_hours.toFixed(0)} of ${H} h</div>` + vsFlat(s.sunlight_pct, s.sunlight_pct_flat), rating.sunlight];
+  const earthTile = day
+    ? ['Earth in view (24 h)', `${s.earth_hours.toFixed(1)} h`, `<div class="sub">${(H - s.earth_hours).toFixed(1)} h out of view${vsFlatH(s.earth_hours, s.earth_hours_flat)}</div>`, rating.earth]
+    : ['Earth visible', fmt(s.earth_visible_pct, 0, '%'), `<div class="sub">${s.earth_hours.toFixed(0)} of ${H} h</div>` + vsFlat(s.earth_visible_pct, s.earth_visible_pct_flat), rating.earth];
+  $('site-period').textContent = `Stats for ${periodText(r.period)}`;
   const tiles = [
-    ['Sunlight', fmt(s.sunlight_pct, 0, '%'), vsFlat(s.sunlight_pct, s.sunlight_pct_flat), rating.sunlight],
-    ['Earth visible', fmt(s.earth_visible_pct, 0, '%'), vsFlat(s.earth_visible_pct, s.earth_visible_pct_flat), rating.earth],
+    sunTile,
+    earthTile,
     ['Slope', fmt(s.slope_deg, 1, '°'), s.slope_baseline_m ? `<div class="sub">over ${s.slope_baseline_m.toFixed(0)} m</div>` : '', rating.slope],
     ['Elevation', fmt(s.elevation_m, 0, ' m'), '', rating.elevation],
     ['Temperature', temp, '<div class="sub">placeholder</div>', rating.temperature],
@@ -545,39 +616,47 @@ function render() {
     .join('');
 }
 
-// Left panel: the sites the user added to the comparison. The active one shows a summary.
+// Left panel: the compared sites as a table. Columns are the values, rows the sites.
+// Every row uses the same analysis period, so the numbers are like-for-like.
 function renderCompareList() {
-  $('compare-empty').hidden = state.sites.length > 0;
-  $('compare-list').innerHTML = state.sites.map((s) => {
-    const lander = state.landers.find((l) => l.id === s.lander);
+  const has = state.sites.length > 0;
+  $('compare-empty').hidden = has;
+  $('compare-table').hidden = !has;
+  if (!has) return;
+  const day = state.period.mode === 'day';
+  $('compare-period').textContent = state.sites[0].result ? `Period: ${periodText(state.sites[0].result.period)}` : '';
+  const head = ['Site', 'Verdict', day ? 'Daylight' : 'Sunlight', day ? 'Earth in view' : 'Earth', 'Slope',
+    'Peak sun on panel', 'Elevation', 'Lander · landing', 'Terrain', ''];
+  $('compare-table').querySelector('thead').innerHTML = `<tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr>`;
+  $('compare-table').querySelector('tbody').innerHTML = state.sites.map((s) => {
+    const r = s.result;
     const where = s.name ?? `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`;
-    const verdict = s.result?.pass === true ? '<span class="badge pass">PASS</span>'
-      : s.result?.pass === false ? '<span class="badge fail">FAIL</span>' : '';
-    const active = s === state.current;
-    return `<li data-id="${s.id}" class="${active ? 'active' : ''}" style="border-left-color:${landerColor(s.lander)}">
-      <div class="row"><span><b>${esc(where)}</b> ${verdict}</span>
-        <button class="remove" data-remove="${s.id}" title="Remove from comparison">×</button></div>
-      ${active && s.result ? siteSummary(s, lander) : ''}
-    </li>`;
+    const active = s === state.current ? 'active' : '';
+    const lead = `<td class="site-cell" style="border-left-color:${landerColor(s.lander)}"><b>${esc(where)}</b>` +
+      `<div class="muted">${fmtLat(s.lat)}, ${fmtLon(s.lng)}</div></td>`;
+    const remove = `<td><button class="remove" data-remove="${s.id}" title="Remove from comparison">×</button></td>`;
+    if (!r) return `<tr data-id="${s.id}" class="${active}">${lead}<td colspan="8" class="muted">calculating…</td>${remove}</tr>`;
+    const rt = rateStats(s, r);
+    const cell = (rating, text) => `<td class="${rating.level}" title="${esc(rating.why)}">${text}</td>`;
+    const lander = state.landers.find((l) => l.id === s.lander);
+    const verdict = r.pass === true ? '<span class="badge pass">PASS</span>'
+      : r.pass === false ? '<span class="badge fail">FAIL</span>' : '<span class="muted">—</span>';
+    const sun = day ? `${r.site.sun_hours.toFixed(1)} h` : fmt(r.site.sunlight_pct, 0, '%');
+    const earth = day ? `${r.site.earth_hours.toFixed(1)} h` : fmt(r.site.earth_visible_pct, 0, '%');
+    const landing = s.landingDate ? `${s.landingDate} ${s.landingTime ?? '00:00'}` : 'no landing';
+    return `<tr data-id="${s.id}" class="${active}">
+      ${lead}
+      <td>${verdict}</td>
+      ${cell(rt.sunlight, sun)}
+      ${cell(rt.earth, earth)}
+      ${cell(rt.slope, fmt(r.site.slope_deg, 1, '°'))}
+      ${cell(rt.sun_m2, fmt(Math.max(...r.power_w.map((p) => p.w_m2)), 0, ' W/m²'))}
+      <td>${fmt(r.site.elevation_m, 0, ' m')}</td>
+      <td>${esc(lander?.name ?? '—')}<div class="muted">${esc(landing)}</div></td>
+      <td>${r.terrain.level === 'detailed' ? 'detailed ~30 m' : `global ~${r.terrain.resolution_m.toFixed(0)} m`}</td>
+      ${remove}
+    </tr>`;
   }).join('');
-}
-
-function siteSummary(s, lander) {
-  const r = s.result;
-  const rt = rateStats(s, r);
-  const dot = (x) => `<span class="dot ${x.level}" title="${esc(x.why)}"></span>`;
-  const row = (k, v) => `<span class="k">${k}</span><span>${v}</span>`;
-  const landing = s.landingDate ? `${s.landingDate} ${s.landingTime ?? '00:00'} UTC` : 'not chosen';
-  return `<div class="summary">
-    ${row('Where', `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`)}
-    ${row('Lander', esc(lander?.name ?? 'none chosen'))}
-    ${row('Landing', esc(landing))}
-    ${row('Sunlight', `${dot(rt.sunlight)}${fmt(r.site.sunlight_pct, 0, '%')}`)}
-    ${row('Earth', `${dot(rt.earth)}${fmt(r.site.earth_visible_pct, 0, '%')}`)}
-    ${row('Slope', `${dot(rt.slope)}${fmt(r.site.slope_deg, 1, '°')}`)}
-    ${row('Sun on panel', `${dot(rt.sun_m2)}${fmt(Math.max(...r.power_w.map((p) => p.w_m2)), 0, ' W/m²')} peak`)}
-    ${row('Terrain', r.terrain.level === 'detailed' ? 'detailed (~30 m)' : `global (~${r.terrain.resolution_m.toFixed(0)} m)`)}
-  </div>`;
 }
 
 function flyTo(site) {
@@ -598,6 +677,10 @@ $('view3d-btn').addEventListener('click', () => onOpen3d());
 $('get-detail-btn').addEventListener('click', () => getDetailedTerrain());
 $('show-sites').addEventListener('change', refreshLabels);
 $('real-sun').addEventListener('change', applyGlobeSky);
+$('period-start').value = state.period.start;
+document.querySelectorAll('input[name="period-mode"]').forEach((el) => el.addEventListener('change', onPeriodChange));
+$('period-start').addEventListener('change', onPeriodChange);
+$('period-end').addEventListener('change', onPeriodChange);
 $('layer-buttons').addEventListener('click', (e) => {
   const key = e.target.dataset?.layer;
   if (key) setLayer(key);
@@ -622,7 +705,7 @@ $('windows').addEventListener('click', (e) => {
     $('time-input').value = e.target.dataset.time ?? '';
   }
 });
-$('compare-list').addEventListener('click', (e) => {
+$('compare-table').addEventListener('click', (e) => {
   const removeId = e.target.dataset?.remove;
   if (removeId) {
     state.sites = state.sites.filter((s) => s.id !== removeId);
@@ -630,8 +713,8 @@ $('compare-list').addEventListener('click', (e) => {
     render();
     return;
   }
-  const li = e.target.closest('li[data-id]');
-  const site = li && state.sites.find((s) => s.id === li.dataset.id);
+  const row = e.target.closest('tr[data-id]');
+  const site = row && state.sites.find((s) => s.id === row.dataset.id);
   if (site) {
     selectSite(site);
     flyTo(site);

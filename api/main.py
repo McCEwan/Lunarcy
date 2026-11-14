@@ -189,6 +189,8 @@ def evaluate_site(req: EvaluateRequest) -> dict:
         payload_kg=req.payload_kg,
         landing_date=req.landing_date,
         landing_time=req.landing_time,
+        period_start=req.period_start,
+        period_end=req.period_end,
         skyline=skyline,
         site_alt_m=site_alt,
         sources=sources,

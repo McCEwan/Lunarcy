@@ -100,6 +100,18 @@ def test_sky_subpoints():
     assert body["time"] == "2027-03-14T07:00Z"
 
 
+def test_period_single_day_and_validation():
+    r = client.post("/evaluate", json={"lat": 0, "lon": 0, "period_start": "2027-03-10"})
+    assert r.status_code == 200 and r.json()["period"]["hours"] == 24
+    bad = [
+        {"period_start": "2027-03-10", "period_end": "2027-03-01"},     # end before start
+        {"period_end": "2027-03-10"},                                   # end without start
+        {"period_start": "2027-01-01", "period_end": "2028-06-01"},     # too long
+    ]
+    for extra in bad:
+        assert client.post("/evaluate", json={"lat": 0, "lon": 0, **extra}).status_code == 422
+
+
 def test_bad_terrain_level_is_422():
     assert client.post("/evaluate", json={"lat": 0, "lon": 0, "terrain_level": "ultra"}).status_code == 422
 

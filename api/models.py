@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+MAX_PERIOD_DAYS = 366
 EPHEMERIS_START = date(2025, 1, 1)
 EPHEMERIS_END = date(2050, 12, 31)  # DE421 + moon_pa_de421 cover 1900-2050
 
@@ -19,6 +20,24 @@ class EvaluateRequest(BaseModel):
     landing_date: date | None = None
     landing_time: datetime | None = None  # UTC; wins over landing_date when both are sent
     terrain_level: Literal["global", "detailed"] = "global"
+    # Analysis period (inclusive UTC dates). One day = start only (or start == end).
+    period_start: date | None = None
+    period_end: date | None = None
+
+    @model_validator(mode="after")
+    def check_period(self):
+        if self.period_end and not self.period_start:
+            raise ValueError("period_end needs period_start")
+        if self.period_start:
+            end = self.period_end or self.period_start
+            if end < self.period_start:
+                raise ValueError("period_end is before period_start")
+            if (end - self.period_start).days + 1 > MAX_PERIOD_DAYS:
+                raise ValueError(f"the analysis period can be at most {MAX_PERIOD_DAYS} days")
+            for d in (self.period_start, end):
+                if not (EPHEMERIS_START <= d <= EPHEMERIS_END):
+                    raise ValueError(f"period dates must be between {EPHEMERIS_START} and {EPHEMERIS_END}")
+        return self
 
     @field_validator("landing_date")
     @classmethod
@@ -48,6 +67,17 @@ class SiteStats(BaseModel):
     earth_visible_pct: float            # Earth above the terrain horizon
     sunlight_pct_flat: float            # same, ignoring terrain (smooth-sphere horizon)
     earth_visible_pct_flat: float
+    sun_hours: float                    # hours of the analysis period with the Sun visible
+    earth_hours: float                  # hours with Earth visible (direct-to-Earth comms)
+    sun_hours_flat: float
+    earth_hours_flat: float
+
+
+class Period(BaseModel):
+    kind: Literal["day", "range", "mission", "lunar_day"]
+    start: str                          # UTC, inclusive
+    end: str                            # UTC, exclusive
+    hours: float
 
 
 class SkyPoint(BaseModel):
@@ -104,6 +134,7 @@ class Check(BaseModel):
 
 class EvaluateResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
+    period: Period
     site: SiteStats
     terrain: TerrainInfo
     sky: list[SkyPoint]

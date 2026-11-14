@@ -60,8 +60,9 @@ The comparison view is just the frontend's list of cached `/evaluate` results. I
 - **Visualizations:**
   - Sunlight on the panel (W/m²) over the landing window, as a line chart.
   - Earth communications access over time at that site, as a strip or area chart.
-- **Compared sites (left panel):** a semi-transparent panel on the left of the globe lists the sites added with "Add to comparison". Clicking one makes it active, flies the globe to it and expands a summary (lander, landing time, coloured sunlight/Earth/slope/panel-sunlight, terrain level). × removes it.
-- **Stat colours:** site tiles and summaries are green/yellow/red (`rateStats()` in `web/app.js`), tied to the evaluator thresholds and the lander's limits. Green = passes with margin, yellow = close to the limit, red = fails or poor. Thresholds show on hover; the legend is bottom-left. Sunlight uses 75/60% over a mission or 45/30% over a lunar day, Earth 95/80%, slope 0.7×limit/limit, and peak panel sunlight 500/150 W/m². Elevation and (placeholder) temperature aren't rated.
+- **Analysis period (right panel, top):** one setting for the whole app: a single UTC day or a date range. Every site, including every comparison row, is evaluated over it (changing it re-evaluates them all). In single-day mode, sunlight and Earth contact show as hours out of 24. Mission pass/fail checks still use the mission window, and with a landing chosen, the 3D timelapse fetches the mission series (`/evaluate` without a period).
+- **Compared sites (left panel):** a semi-transparent comparison table: one row per site, columns for verdict, sunlight (hours or %), Earth, slope, peak panel sunlight, elevation, lander/landing and terrain level, with colour-coded cells. Clicking a row makes it active and flies the globe to it. × removes it.
+- **Stat colours:** site tiles and summaries are green/yellow/red (`rateStats()` in `web/app.js`), tied to the evaluator thresholds and the lander's limits. Green = passes with margin, yellow = close to the limit, red = fails or poor. Thresholds show on hover; the legend is bottom-left. Sunlight uses 18/6 h for a single day, 75/60% over a mission, 70/40% for a range under 25 days, and 45/30% for a month or more. Earth uses 95/80% (22.8/19.2 h for a day), slope 0.7×limit/limit, and peak panel sunlight 500/150 W/m². Elevation and (placeholder) temperature aren't rated.
 - **3D site view (`web/site3d.js`, three.js 0.170 via the import map in `index.html`):** a 20 × 20 km terrain mesh from `/terrain/patch` (true 1× vertical scale, with the Moon's curvature applied), a directional light at the Sun's Horizons az/el with shadows, the Sun and Earth drawn 6× and 3× their true angular size so they're visible (said on screen), and Earth's phase from the Sun/Earth geometry. Also shown: the skyline from `/terrain/horizon` and N/E/S/W labels. A timelapse plays the `/evaluate` series from the landing hour to mission end (or across a lunar day if no landing is chosen), with play/pause, speed and a scrubber. The readout shows UTC time, T+, Sun and Earth az/el, sunlight on the panel (W/m²), comms, time to sunset/Earthset, and "behind terrain" when the skyline blocks the Sun or Earth. Moon and Earth surfaces are generic textures by design. Coordinates: x = east, y = up, z = −north, and direction = `(sin az·cos el, sin el, −cos az·cos el)`. `window.__lunar3d` exposes the live view for debugging. The view uses the site's terrain level (global: 257² vertices; detailed: 513²) and has its own "Get detailed terrain" button, which reopens it at the same moment. Terrain beyond the 20 km patch still casts shadows through an invisible **skyline occluder**: a ring just outside the patch, as tall as the real skyline in each direction, that only casts shadows. It's exact at the landing site and approximate elsewhere.
 - **Globe lighting:** a "Light by the real Sun" toggle (on by default) points globe.gl's directional light from the Horizons sub-solar point and shows Sun/Earth markers. The time used is the chosen landing time, or now. `window.__globe` exposes the globe for debugging.
 - **State:** one array of sites in memory:
@@ -98,7 +99,8 @@ Remember that globe.gl uses `lng` and the API uses `lon`.
 | Terrain horizon (skyline) | `horizon_profile()` over the active LOLA level, out to 150 km, with curvature |
 | Sun/Earth *visible* | Elevation above the skyline at that azimuth (`sun_visible`/`earth_visible` per step). Everything below uses this. |
 | Time to sunset / Earthset | First horizon crossing in the series (`events`) |
-| % time in sunlight | Fraction of timesteps with the Sun visible (above the terrain skyline). `sunlight_pct_flat` gives the smooth-horizon value for comparison. |
+| Hours of daylight / Earth in view | `visible_hours()`: hourly samples, with the rise/set moment inside an hour interpolated linearly (a 06:40 sunrise counts 0.33 h). `sun_hours` / `earth_hours` (+ `_flat`). |
+| % time in sunlight | `sun_hours / period hours`. `sunlight_pct_flat` gives the smooth-horizon value for comparison. |
 | Sunlight on the panel (shown in the UI) | `w_m2 = 1361 W/m² × sin(sun_elev)` on a flat panel, per m², before efficiency; zero in terrain shadow or below the horizon. |
 | Solar watts (`w`, kept for compatibility) | `w_m2 × panel_area × efficiency` (the lander's, or 1 m² at 30%). |
 | Earth visibility / comms access | Fraction of timesteps with Earth above the skyline (`earth_visible_pct_flat` for comparison). The far side correctly shows zero. |
@@ -134,6 +136,7 @@ Default time resolution is 1 hour over one lunar day (about 29.5 days). Use vect
 | `payload_kg` | float | 0 to the lander's capacity |
 | `landing_date` | date | Must fall in the ephemeris range |
 | `landing_time` | datetime (UTC) | Must fall in the ephemeris range |
+| `period_start` / `period_end` | date (UTC, inclusive) | The analysis period. `period_start` alone = one 24 h day; with `period_end` = a range (max 366 days). Without them: the mission (if lander + landing) or the next lunar day. |
 | `terrain_level` | `"global"` (default) or `"detailed"` | `"detailed"` downloads the ~30 m patch first if needed (a few seconds) |
 
 **Response (200)**
@@ -148,7 +151,12 @@ Default time resolution is 1 hour over one lunar day (about 29.5 days). Use vect
     "skyline_max_deg": 2.4,
     "detailed_cached": false
   },
+  "period": { "kind": "day", "start": "2027-03-14T00:00Z", "end": "2027-03-15T00:00Z", "hours": 24 },
   "site": {
+    "sun_hours": 18.8,
+    "earth_hours": 14.6,
+    "sun_hours_flat": 19.3,
+    "earth_hours_flat": 14.6,
     "slope_deg": 4.2,
     "slope_baseline_m": 948,
     "sunlight_pct_flat": 80.1,

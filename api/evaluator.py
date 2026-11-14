@@ -38,6 +38,8 @@ def evaluate(
     payload_kg: float | None = None,
     landing_date: date | None = None,
     landing_time: datetime | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
     skyline: list[float] | np.ndarray | None = None,
     site_alt_m: float = 0.0,
     sources: list[str] | None = None,
@@ -46,6 +48,10 @@ def evaluate(
 
     `ephem` is any object with `sky(lat, lon, times, alt_m) -> ephemeris.Sky`.
     `landing_time` (naive UTC, hour precision) wins over `landing_date` (00:00 UTC).
+    `period_start`/`period_end` (inclusive UTC dates) set the analysis period for the
+    site stats and the sky/power/comms series. Without them the period is the mission
+    (lander + landing chosen) or the next lunar day from `search_start`. Mission
+    pass/fail checks always use the mission window, whatever the analysis period.
     `skyline` is the terrain horizon (360 elevation angles, 1° steps clockwise from
     north). With it, the Sun/Earth only count as visible above the real terrain;
     without it, above the smooth-sphere horizon. `site_alt_m` is passed to Horizons.
@@ -55,12 +61,15 @@ def evaluate(
         datetime.combine(landing_date, time()) if landing_date else None
     )
 
-    # Which stretch of time the sky/power/comms series cover.
-    series_start = landing or search_start
-    if lander and landing:
-        series_days = lander["mission_days"]
+    # Which stretch of time the sky/power/comms series (and site stats) cover.
+    if period_start:
+        end = period_end or period_start
+        series_start, series_days = period_start, (end - period_start).days + 1
+        period_kind = "day" if series_days == 1 else "range"
+    elif lander and landing:
+        series_start, series_days, period_kind = landing, lander["mission_days"], "mission"
     else:
-        series_days = LUNAR_DAY_DAYS
+        series_start, series_days, period_kind = search_start, LUNAR_DAY_DAYS, "lunar_day"
 
     times = ephemeris.time_grid(series_start, series_days, STEP_HOURS)
     sky = ephem.sky(lat, lon, times, alt_m=site_alt_m)
@@ -72,6 +81,11 @@ def evaluate(
     earth_sky = skyline_at(skyline, sky.earth_az)
     sun_vis = sun_el > sun_sky
     earth_vis = earth_el > earth_sky
+    period_hours = len(times) * STEP_HOURS
+    sun_h = visible_hours(sun_el - sun_sky)
+    earth_h = visible_hours(earth_el - earth_sky)
+    sun_h_flat = visible_hours(sun_el)
+    earth_h_flat = visible_hours(earth_el)
 
     if lander:
         area, eff = lander["solar_array_m2"], lander["solar_efficiency"]
@@ -89,7 +103,14 @@ def evaluate(
         site_checks = _site_checks(terrain, lander, payload_kg)
         checks.extend(site_checks)
         if landing:
-            checks.extend(_date_checks(sun_el - sun_sky, sun_vis, earth_vis, lander, skyline is not None))
+            if period_kind == "mission":
+                m_sun_margin, m_earth_vis = sun_el - sun_sky, earth_vis
+            else:   # analysis period differs from the mission: check the mission window itself
+                m_times = ephemeris.time_grid(landing, lander["mission_days"], STEP_HOURS)
+                m_sky = ephem.sky(lat, lon, m_times, alt_m=site_alt_m)
+                m_sun_margin = m_sky.sun_el - skyline_at(skyline, m_sky.sun_az)
+                m_earth_vis = m_sky.earth_el > skyline_at(skyline, m_sky.earth_az)
+            checks.extend(_date_checks(m_sun_margin, m_sun_margin > 0, m_earth_vis, lander, skyline is not None))
             launch_estimate = landing.date() - timedelta(days=lander["transit_days"])
         else:
             site_ok = all(c["pass"] for c in site_checks)
@@ -104,16 +125,27 @@ def evaluate(
                 launch_estimate = windows[0]["start"] - timedelta(days=lander["transit_days"])
 
     labels = [_iso(t) for t in times]
+    pct = lambda h: round(100.0 * h / period_hours, 1)  # noqa: E731
     return {
+        "period": {
+            "kind": period_kind,                  # day | range | mission | lunar_day
+            "start": labels[0],
+            "end": _iso(times[-1] + np.timedelta64(int(STEP_HOURS * 3600), "s")),
+            "hours": period_hours,
+        },
         "site": {
             "slope_deg": terrain.slope_deg if terrain else None,
             "slope_baseline_m": terrain.slope_baseline_m if terrain else None,
             "elevation_m": terrain.elevation_m if terrain else None,
             "temp_range_k": _temp_range(terrain),
-            "sunlight_pct": _pct(sun_vis),
-            "earth_visible_pct": _pct(earth_vis),
-            "sunlight_pct_flat": _pct(sun_el > 0),          # same, ignoring terrain
-            "earth_visible_pct_flat": _pct(earth_el > 0),
+            "sunlight_pct": pct(sun_h),
+            "earth_visible_pct": pct(earth_h),
+            "sunlight_pct_flat": pct(sun_h_flat),          # same, ignoring terrain
+            "earth_visible_pct_flat": pct(earth_h_flat),
+            "sun_hours": sun_h,                            # hours of the period with the Sun visible
+            "earth_hours": earth_h,
+            "sun_hours_flat": sun_h_flat,
+            "earth_hours_flat": earth_h_flat,
         },
         "sky": [
             {
@@ -142,6 +174,25 @@ def evaluate(
         "pass": all(c["pass"] for c in checks) if checks else None,
         "sources": list(dict.fromkeys(used_sources + (sources or []))),
     }
+
+
+def visible_hours(margin: np.ndarray) -> float:
+    """Hours (to 0.1 h) that `margin` (elevation above the horizon, hourly) is positive.
+
+    Each hourly sample starts a one-hour interval. When the sign changes inside an
+    interval, the crossing time is interpolated linearly, so a sunrise at 06:40 counts
+    as 0.33 h of that hour instead of 0 or 1.
+    """
+    m = np.asarray(margin, dtype=float)
+    if m.size == 0:
+        return 0.0
+    m0, m1 = m[:-1], m[1:]
+    up0, up1 = m0 > 0, m1 > 0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cross = np.where(up0, m0 / (m0 - m1), m1 / (m1 - m0))
+    frac = np.where(up0 & up1, 1.0, np.where(~up0 & ~up1, 0.0, cross))
+    intervals = float(np.sum(frac)) + (1.0 if m[-1] > 0 else 0.0)   # last sample: its sign
+    return round(intervals * STEP_HOURS, 1)
 
 
 def skyline_at(skyline, azimuth_deg) -> np.ndarray:

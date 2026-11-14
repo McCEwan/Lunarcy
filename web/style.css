@@ -87,24 +87,45 @@ a { color: var(--accent); }
 /* Left column over the globe: layer switcher + compared sites */
 #left-col {
   position: absolute; top: 12px; left: 12px; z-index: 2;
-  display: flex; flex-direction: column; gap: 8px;
-  width: min(300px, calc(100% - var(--panel-w) - 24px));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
   max-height: calc(100% - 150px);        /* leave room for the legend */
 }
+#layers { width: min(300px, calc(100vw - var(--panel-w) - 24px)); }
 #compare-panel {
   background: rgba(15, 20, 32, .45); backdrop-filter: blur(3px);
   overflow-y: auto; min-height: 0; flex: 0 1 auto;
 }
+/* Comparison chart: one row per site, one column per value */
+#compare-panel { width: max-content; max-width: calc(100vw - var(--panel-w) - 24px); }
+.table-wrap { overflow-x: auto; }
+.compare-table { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.compare-table th {
+  text-align: left; font-weight: 600; color: var(--muted); font-size: 11px;
+  padding: 4px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
+  background: rgba(15, 20, 32, .7);
+}
+.compare-table td { padding: 5px 8px; border-bottom: 1px solid rgba(38, 48, 73, .6); vertical-align: top; }
+.compare-table td .muted { font-size: 11px; }
+.compare-table tbody tr { cursor: pointer; background: rgba(22, 29, 45, .35); }
+.compare-table tbody tr:hover { background: rgba(38, 48, 73, .7); }
+.compare-table tbody tr.active { background: rgba(124, 196, 255, .15); outline: 1px solid var(--accent); }
+.compare-table .site-cell { border-left: 4px solid var(--line); }
+.compare-table td.good { color: var(--pass); font-weight: 600; }
+.compare-table td.warn { color: var(--warn); font-weight: 600; }
+.compare-table td.bad { color: var(--fail); font-weight: 600; }
+.period-modes { display: flex; gap: 14px; }
+.period-modes .check { margin: 0 0 4px; }
+
 #compare-panel .compare li {
   background: rgba(22, 29, 45, .6); border-left-width: 4px; margin-bottom: 6px; font-size: 12px;
 }
 #compare-panel .compare li:hover { background: rgba(38, 48, 73, .75); }
 .compare li .row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-.compare li .remove {
+.compare li .remove, .compare-table .remove {
   width: auto; margin: 0; padding: 0 6px; background: transparent; color: var(--muted);
   border: 0; font-size: 14px; line-height: 1;
 }
-.compare li .remove:hover { color: var(--fail); }
+.compare li .remove:hover, .compare-table .remove:hover { color: var(--fail); }
 .summary { margin-top: 6px; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; }
 .summary .k { color: var(--muted); }
 
@@ -203,6 +224,7 @@ button.secondary { background: var(--panel-2); color: var(--accent); border: 1px
   #globe { inset: 0 0 50% 0; }
   #panel { top: 50%; width: 100%; border-left: 0; border-top: 1px solid var(--line); }
   #left-col { width: calc(100% - 24px); max-height: calc(100% - 24px); }
+  #layers, #compare-panel { width: 100%; max-width: 100%; }
   #compare-panel { max-height: 30vh; }
   #legend { display: none; }                 /* not enough room; colours still show on the tiles */
 }

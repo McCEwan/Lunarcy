@@ -159,6 +159,46 @@ def test_skyline_at_interpolates_and_wraps():
     assert evaluator.skyline_at(None, [10.0])[0] == 0.0
 
 
+def test_single_day_reports_hours_out_of_24():
+    day = date(2027, 3, 10)
+    r = evaluator.evaluate(0, 0, terrain=FLAT, search_start=START, ephem=EPHEM, period_start=day)
+    assert r["period"]["kind"] == "day" and r["period"]["hours"] == 24
+    assert r["period"]["start"] == "2027-03-10T00:00Z" and r["period"]["end"] == "2027-03-11T00:00Z"
+    assert len(r["sky"]) == 24
+    s = r["site"]
+    assert 0 <= s["sun_hours"] <= 24 and s["earth_hours"] == 24.0           # near side: Earth all day
+    assert s["sunlight_pct"] == pytest.approx(100 * s["sun_hours"] / 24, abs=0.1)
+
+
+def test_date_range_and_lunar_day_defaults():
+    r = evaluator.evaluate(0, 0, terrain=FLAT, search_start=START, ephem=EPHEM,
+                           period_start=date(2027, 3, 1), period_end=date(2027, 3, 10))
+    assert r["period"]["kind"] == "range" and r["period"]["hours"] == 240
+    default = evaluator.evaluate(0, 0, terrain=FLAT, search_start=START, ephem=EPHEM)
+    assert default["period"]["kind"] == "lunar_day"
+
+
+def test_visible_hours_interpolates_sunrise():
+    # Sun climbs 1° per hour from -2.5°: it rises 2.5 h in, so 0.5 h of hour 2 counts.
+    m = [-2.5, -1.5, -0.5, 0.5, 1.5]
+    assert evaluator.visible_hours(m) == pytest.approx(2.5)          # 0.5 + 1 + 1 (last hour)
+    assert evaluator.visible_hours([-1, -1]) == 0.0
+    assert evaluator.visible_hours([1, 1, 1]) == 3.0
+
+
+def test_mission_checks_use_the_mission_even_with_another_period():
+    windows = evaluator.evaluate(0, -10, terrain=FLAT, search_start=START, ephem=EPHEM, lander=LANDER)["windows"]
+    landing = _hour(windows[0]["start_time"])
+    in_mission = evaluator.evaluate(0, -10, terrain=FLAT, search_start=START, ephem=EPHEM, lander=LANDER,
+                                    landing_time=landing)
+    # analysis period: a single day two weeks after landing (lunar night there)
+    other = evaluator.evaluate(0, -10, terrain=FLAT, search_start=START, ephem=EPHEM, lander=LANDER,
+                               landing_time=landing, period_start=landing.date() + timedelta(days=16))
+    assert other["period"]["kind"] == "day"
+    assert [c["pass"] for c in other["checks"]] == [c["pass"] for c in in_mission["checks"]]
+    assert other["site"]["sun_hours"] < 24
+
+
 def test_missing_terrain_still_returns_sky_stats():
     r = evaluator.evaluate(0, 0, terrain=None, search_start=START, ephem=EPHEM)
     assert r["site"]["slope_deg"] is None and r["site"]["temp_range_k"] is None
