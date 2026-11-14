@@ -8,6 +8,7 @@
   --accent: #7cc4ff;
   --pass: #4cd18a;
   --fail: #ff6b6b;
+  --warn: #ffcc4d;
   --panel-w: 360px;
 }
 
@@ -79,10 +80,50 @@ a { color: var(--accent); }
 
 /* Map layer switcher over the globe */
 .overlay {
-  position: absolute; top: 12px; left: 12px; z-index: 2;
   background: rgba(15, 20, 32, .85); border: 1px solid var(--line); border-radius: 8px;
-  padding: 8px 10px; max-width: calc(100% - var(--panel-w) - 24px);
+  padding: 8px 10px;
 }
+
+/* Left column over the globe: layer switcher + compared sites */
+#left-col {
+  position: absolute; top: 12px; left: 12px; z-index: 2;
+  display: flex; flex-direction: column; gap: 8px;
+  width: min(300px, calc(100% - var(--panel-w) - 24px));
+  max-height: calc(100% - 150px);        /* leave room for the legend */
+}
+#compare-panel {
+  background: rgba(15, 20, 32, .45); backdrop-filter: blur(3px);
+  overflow-y: auto; min-height: 0; flex: 0 1 auto;
+}
+#compare-panel .compare li {
+  background: rgba(22, 29, 45, .6); border-left-width: 4px; margin-bottom: 6px; font-size: 12px;
+}
+#compare-panel .compare li:hover { background: rgba(38, 48, 73, .75); }
+.compare li .row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.compare li .remove {
+  width: auto; margin: 0; padding: 0 6px; background: transparent; color: var(--muted);
+  border: 0; font-size: 14px; line-height: 1;
+}
+.compare li .remove:hover { color: var(--fail); }
+.summary { margin-top: 6px; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; }
+.summary .k { color: var(--muted); }
+
+/* Stat colour legend, bottom left */
+#legend { position: absolute; left: 12px; bottom: 12px; z-index: 2; line-height: 1.7; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.swatch.good, .dot.good { background: var(--pass); }
+.swatch.warn, .dot.warn { background: var(--warn); }
+.swatch.bad, .dot.bad { background: var(--fail); }
+.dot.none { background: var(--line); }
+
+/* Rated stat tiles */
+.tile { border-left: 3px solid transparent; }
+.tile.good { border-left-color: var(--pass); }
+.tile.good .v { color: var(--pass); }
+.tile.warn { border-left-color: var(--warn); }
+.tile.warn .v { color: var(--warn); }
+.tile.bad { border-left-color: var(--fail); }
+.tile.bad .v { color: var(--fail); }
 .overlay-title { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
 .check { display: flex; gap: 6px; align-items: center; margin: 8px 0 0; }
 .check input { width: auto; margin: 0; display: inline; }
@@ -161,5 +202,7 @@ button.secondary { background: var(--panel-2); color: var(--accent); border: 1px
   :root { --panel-w: 100%; }
   #globe { inset: 0 0 50% 0; }
   #panel { top: 50%; width: 100%; border-left: 0; border-top: 1px solid var(--line); }
-  .overlay { max-width: calc(100% - 24px); }
+  #left-col { width: calc(100% - 24px); max-height: calc(100% - 24px); }
+  #compare-panel { max-height: 30vh; }
+  #legend { display: none; }                 /* not enough room; colours still show on the tiles */
 }

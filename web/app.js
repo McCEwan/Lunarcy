@@ -33,6 +33,35 @@ const fmtLat = (lat) => `${Math.abs(lat).toFixed(2)}°${lat < 0 ? 'S' : 'N'}`;
 const fmtLon = (lon) => `${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
 const statusColor = (s) => (s.status === 'planned' ? '#5ee1ff' : '#ffd166');
 
+// ---- Stat colours: good (green) / warn (yellow) / bad (red) ------------------------
+// Tied to the evaluator's pass/fail thresholds (api/evaluator.py) and the lander's limits:
+// green = passes with margin, yellow = close to the limit, red = fails or poor.
+function rateStats(site, r) {
+  const s = r.site;
+  const lander = state.landers.find((l) => l.id === site.lander);
+  const mission = Boolean(site.lander && site.landingDate);   // series covers the mission, not a lunar day
+  const slopeLimit = lander?.max_slope_deg ?? 10;
+  const peakSun = Math.max(...r.power_w.map((p) => p.w_m2));
+  const band = (v, good, warn, higherIsBetter = true) => {
+    if (v === null || v === undefined) return 'none';
+    return higherIsBetter ? (v >= good ? 'good' : v >= warn ? 'warn' : 'bad')
+                          : (v <= good ? 'good' : v <= warn ? 'warn' : 'bad');
+  };
+  return {
+    sunlight: mission
+      ? { level: band(s.sunlight_pct, 75, 60), why: 'Over the mission: green ≥75%, yellow 60–75%, red <60% (fails the 60% check)' }
+      : { level: band(s.sunlight_pct, 45, 30), why: 'Over a lunar day (the Sun is up at most ~50% away from the poles): green ≥45%, yellow 30–45%, red <30%' },
+    earth: { level: band(s.earth_visible_pct, 95, 80), why: 'Direct-to-Earth comms: green ≥95%, yellow 80–95%, red <80% (fails the 80% check)' },
+    slope: {
+      level: band(s.slope_deg, 0.7 * slopeLimit, slopeLimit, false),
+      why: `${lander ? lander.name : 'Typical lander'} limit ${slopeLimit}°: green ≤${(0.7 * slopeLimit).toFixed(0)}°, yellow up to ${slopeLimit}°, red above`,
+    },
+    sun_m2: { level: band(peakSun, 500, 150), why: 'Peak sunlight on a flat panel: green ≥500 W/m² (Sun ≥~22°), yellow 150–500 (~6–22°), red <150 W/m²' },
+    elevation: { level: 'none', why: 'Not rated: elevation alone is neither good nor bad' },
+    temperature: { level: 'none', why: 'Not rated: temperature is still placeholder data' },
+  };
+}
+
 // ---- Globe -------------------------------------------------------------------
 
 const globeEl = $('globe');
@@ -388,7 +417,6 @@ function render() {
   $('hint').hidden = !!site;
   $('site-section').hidden = !site;
   $('mission-section').hidden = !r;
-  $('compare-section').hidden = state.sites.length === 0;
   renderCompareList();
   if (!site) return;
 
@@ -416,6 +444,7 @@ function render() {
     $('get-detail-btn').hidden = true;
     $('result-section').hidden = true;
     $('view3d-btn').disabled = true;
+    $('compare-btn').disabled = true;
     return;
   }
 
@@ -440,17 +469,22 @@ function render() {
   const s = r.site;
   const temp = s.temp_range_k ? `${s.temp_range_k[0].toFixed(0)}–${s.temp_range_k[1].toFixed(0)} K` : '—';
   const vsFlat = (v, flat) => (Math.abs(v - flat) >= 0.5 ? `<div class="sub">flat horizon: ${flat.toFixed(0)}%</div>` : '');
+  const rating = rateStats(site, r);
+  const peakSun = Math.max(...r.power_w.map((p) => p.w_m2));
   const tiles = [
-    ['Sunlight', fmt(s.sunlight_pct, 0, '%'), vsFlat(s.sunlight_pct, s.sunlight_pct_flat)],
-    ['Earth visible', fmt(s.earth_visible_pct, 0, '%'), vsFlat(s.earth_visible_pct, s.earth_visible_pct_flat)],
-    ['Slope', fmt(s.slope_deg, 1, '°'), s.slope_baseline_m ? `<div class="sub">over ${s.slope_baseline_m.toFixed(0)} m</div>` : ''],
-    ['Elevation', fmt(s.elevation_m, 0, ' m'), ''],
-    ['Temperature', temp, '<div class="sub">placeholder</div>'],
-    ['Peak power', fmt(Math.max(...r.power_w.map((p) => p.w)), 0, ' W'), ''],
+    ['Sunlight', fmt(s.sunlight_pct, 0, '%'), vsFlat(s.sunlight_pct, s.sunlight_pct_flat), rating.sunlight],
+    ['Earth visible', fmt(s.earth_visible_pct, 0, '%'), vsFlat(s.earth_visible_pct, s.earth_visible_pct_flat), rating.earth],
+    ['Slope', fmt(s.slope_deg, 1, '°'), s.slope_baseline_m ? `<div class="sub">over ${s.slope_baseline_m.toFixed(0)} m</div>` : '', rating.slope],
+    ['Elevation', fmt(s.elevation_m, 0, ' m'), '', rating.elevation],
+    ['Temperature', temp, '<div class="sub">placeholder</div>', rating.temperature],
+    ['Peak sunlight on panel', fmt(peakSun, 0, ' W/m²'), '<div class="sub">flat panel, per m²</div>', rating.sun_m2],
   ];
   $('site-tiles').innerHTML = tiles
-    .map(([k, v, sub]) => `<div class="tile"><div class="k">${k}</div><div class="v">${esc(v)}</div>${sub}</div>`)
+    .map(([k, v, sub, rt]) => `<div class="tile ${rt.level}" title="${esc(rt.why)}">` +
+      `<div class="k">${k}</div><div class="v">${esc(v)}</div>${sub}</div>`)
     .join('') + (s.slope_deg === null ? '<p class="small muted">No terrain data here.</p>' : '');
+  $('compare-btn').disabled = state.sites.includes(site);
+  $('compare-btn').textContent = state.sites.includes(site) ? 'In comparison ✓' : 'Add to comparison';
 
   // Mission inputs
   $('lander-select').value = site.lander ?? '';
@@ -499,7 +533,6 @@ function render() {
     $('checks').innerHTML = r.checks
       .map((ch) => `<li class="${ch.pass ? 'ok' : ''}"><b>${esc(ch.name)}</b>: ${esc(ch.detail)}</li>`)
       .join('');
-    $('compare-btn').disabled = state.sites.includes(site);
   }
 
   // Sources
@@ -509,15 +542,43 @@ function render() {
     .join('');
 }
 
+// Left panel: the sites the user added to the comparison. The active one shows a summary.
 function renderCompareList() {
+  $('compare-empty').hidden = state.sites.length > 0;
   $('compare-list').innerHTML = state.sites.map((s) => {
-    const name = state.landers.find((l) => l.id === s.lander)?.name ?? 'No lander';
-    const verdict = s.result?.pass === true ? 'PASS' : s.result?.pass === false ? 'FAIL' : '—';
+    const lander = state.landers.find((l) => l.id === s.lander);
     const where = s.name ?? `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`;
-    return `<li data-id="${s.id}" class="${s === state.current ? 'active' : ''}" style="border-left-color:${landerColor(s.lander)}">
-      <b>${esc(where)}</b> · ${esc(name)} · ${esc(s.landingDate ? `${s.landingDate} ${s.landingTime ?? '00:00'} UTC` : 'no date')} · ${verdict}
+    const verdict = s.result?.pass === true ? '<span class="badge pass">PASS</span>'
+      : s.result?.pass === false ? '<span class="badge fail">FAIL</span>' : '';
+    const active = s === state.current;
+    return `<li data-id="${s.id}" class="${active ? 'active' : ''}" style="border-left-color:${landerColor(s.lander)}">
+      <div class="row"><span><b>${esc(where)}</b> ${verdict}</span>
+        <button class="remove" data-remove="${s.id}" title="Remove from comparison">×</button></div>
+      ${active && s.result ? siteSummary(s, lander) : ''}
     </li>`;
   }).join('');
+}
+
+function siteSummary(s, lander) {
+  const r = s.result;
+  const rt = rateStats(s, r);
+  const dot = (x) => `<span class="dot ${x.level}" title="${esc(x.why)}"></span>`;
+  const row = (k, v) => `<span class="k">${k}</span><span>${v}</span>`;
+  const landing = s.landingDate ? `${s.landingDate} ${s.landingTime ?? '00:00'} UTC` : 'not chosen';
+  return `<div class="summary">
+    ${row('Where', `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`)}
+    ${row('Lander', esc(lander?.name ?? 'none chosen'))}
+    ${row('Landing', esc(landing))}
+    ${row('Sunlight', `${dot(rt.sunlight)}${fmt(r.site.sunlight_pct, 0, '%')}`)}
+    ${row('Earth', `${dot(rt.earth)}${fmt(r.site.earth_visible_pct, 0, '%')}`)}
+    ${row('Slope', `${dot(rt.slope)}${fmt(r.site.slope_deg, 1, '°')}`)}
+    ${row('Sun on panel', `${dot(rt.sun_m2)}${fmt(Math.max(...r.power_w.map((p) => p.w_m2)), 0, ' W/m²')} peak`)}
+    ${row('Terrain', r.terrain.level === 'detailed' ? 'detailed (~30 m)' : `global (~${r.terrain.resolution_m.toFixed(0)} m)`)}
+  </div>`;
+}
+
+function flyTo(site) {
+  globe.pointOfView({ lat: site.lat, lng: site.lng, altitude: 1.6 }, 800);
 }
 
 function showError(msg) {
@@ -559,9 +620,20 @@ $('windows').addEventListener('click', (e) => {
   }
 });
 $('compare-list').addEventListener('click', (e) => {
+  const removeId = e.target.dataset?.remove;
+  if (removeId) {
+    state.sites = state.sites.filter((s) => s.id !== removeId);
+    refreshPoints();
+    render();
+    return;
+  }
   const li = e.target.closest('li[data-id]');
   const site = li && state.sites.find((s) => s.id === li.dataset.id);
-  if (site) selectSite(site);
+  if (site) {
+    selectSite(site);
+    flyTo(site);
+    updateGlobeSky();
+  }
 });
 
 loadLayers();

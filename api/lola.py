@@ -6,13 +6,14 @@ Both levels are *height sources* (the interface api/patch.py uses):
     source: str          # cited in the UI
     resolution_m: float  # pixel size, used e.g. as the slope baseline
 
-1. Global estimate: `LolaGlobalHeights` memory-maps LDEM_64 (64 px/deg, ~474 m),
-   downloaded once by scripts/fetch_lola.py. Instant for any point on the Moon.
+1. Global estimate: `LolaGlobalHeights` memory-maps LDEM_128 (128 px/deg, ~237 m;
+   LDEM_64 also works), downloaded once by scripts/fetch_lola.py into
+   ~/LunarPlannerData/lola (see api/paths.py). Instant for any point on the Moon.
 
 2. Detailed: `fetch_detail_patch()` pulls ~30 m LOLA data for a 30 x 30 km area
    around a site straight from NASA's archive, using HTTP range requests so only
    the few MB needed are transferred (the source files are 0.5-2 GB). Results are
-   cached in data/lola_detail/. `DetailedHeights` then uses that patch near the
+   cached in ~/LunarPlannerData/lola_detail/. `DetailedHeights` then uses that patch near the
    site and the global grid everywhere else (e.g. for distant mountains).
    - |lat| <= 76: LDEM_1024 simple-cylindrical tiles (15 x 30 degree tiles, ~30 m)
    - |lat| >  76: LDEM_75S_30M / LDEM_75N_30M polar stereographic (30 m)
@@ -49,21 +50,28 @@ USER_AGENT = "lunar-planner-hackathon"
 # ---- Level 1: global grid -----------------------------------------------------------
 
 class LolaGlobalHeights:
-    """LDEM_64 (simple cylindrical, 0-360 E, 90N at row 0), memory-mapped from disk."""
+    """A global LOLA LDEM (simple cylindrical, 0-360 E, 90N at row 0), memory-mapped from disk."""
 
-    resolution_m = 473.8
-    source = "NASA LRO LOLA LDEM_64 global elevation (~474 m/pixel), PDS Geosciences Node"
+    GRIDS = (128, 64)   # preferred first: LDEM_128 (~237 m, 2.1 GB), then LDEM_64 (~474 m, 531 MB)
 
     def __init__(self, img_path: Path, lines: int = 11520, samples: int = 23040, ppd: float = 64.0):
         self.dn = np.memmap(img_path, dtype="<i2", mode="r", shape=(lines, samples))
         self.ppd = ppd
+        self.resolution_m = 2 * np.pi * MOON_R_M / 360.0 / ppd
+        name = f"LDEM_{int(ppd)}" if ppd in self.GRIDS else "LDEM"
+        self.source = (f"NASA LRO LOLA {name} global elevation (~{self.resolution_m:.0f} m/pixel), "
+                       "PDS Geosciences Node")
 
     @classmethod
-    def load(cls, data_dir: Path) -> "LolaGlobalHeights | None":
-        path = data_dir / "lola" / "ldem_64.img"
-        if not path.exists() or path.stat().st_size != 11520 * 23040 * 2:
-            return None
-        return cls(path)
+    def load(cls, *dirs: Path) -> "LolaGlobalHeights | None":
+        """The sharpest complete LDEM found in the given folders (searched in order)."""
+        for ppd in cls.GRIDS:
+            lines, samples = 180 * ppd, 360 * ppd
+            for d in dirs:
+                path = d / f"ldem_{ppd}.img"
+                if path.exists() and path.stat().st_size == lines * samples * 2:
+                    return cls(path, lines, samples, float(ppd))
+        return None
 
     def heights(self, lat_deg, lon_deg) -> np.ndarray:
         lat = np.asarray(lat_deg, dtype=float)

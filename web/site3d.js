@@ -44,12 +44,13 @@ class SiteView {
   constructor({ title, lat, lon, result, landed, level = 'global', initialT = 0, onRequestDetail = null }) {
     Object.assign(this, { title, lat, lon, result, landed, level, onRequestDetail });
     this.series = result.sky;
-    this.power = result.power_w.map((p) => p.w);
+    this.sunPerM2 = result.power_w.map((p) => p.w_m2);   // sunlight on a flat panel, W/m²
     this.t = Math.min(initialT, this.series.length - 1);   // fractional index into the hourly series
     this.playing = false;
     this.speed = 6;             // simulated hours per real second
-    this.exaggeration = 1;
-    this.enlarge = false;
+    this.exaggeration = 1;      // true scale, always
+    this.sunScale = 6;          // Sun and Earth drawn larger than life so they're easy to see
+    this.earthScale = 3;
     this.view = 'overview';
     this.el = document.getElementById('view3d');
     this.disposers = [];
@@ -93,7 +94,7 @@ class SiteView {
     this.setNote(
       `Sun & Earth: ${skySource || 'see Sources'}. ` +
       `Terrain: ${patch.source}. ` +
-      'Moon and Earth surfaces are generic textures.'
+      'Moon and Earth surfaces are generic textures; the Sun and Earth are drawn 6× and 3× their true size so they are easy to see.'
     );
 
     this.update();
@@ -282,8 +283,6 @@ class SiteView {
       this.playing = false;
       this.onRequestDetail(this.t);   // the app re-evaluates and reopens this view at the same moment
     });
-    on($('v3d-exag'), 'change', (e) => { this.exaggeration = e.target.checked ? 2 : 1; this.applyHeights(); this.setView(this.view); });
-    on($('v3d-enlarge'), 'change', (e) => { this.enlarge = e.target.checked; this.update(); });
     on($('v3d-views'), 'click', (e) => { const v = e.target.dataset?.view; if (v) this.setView(v); });
     on(document, 'keydown', (e) => {
       if (this.el.hidden) return;
@@ -291,8 +290,6 @@ class SiteView {
       if (e.key === ' ' && e.target === document.body) { e.preventDefault(); this.togglePlay(); }
     });
     $('v3d-speed').value = String(this.speed);
-    $('v3d-exag').checked = false;
-    $('v3d-enlarge').checked = false;
   }
 
   togglePlay() {
@@ -358,7 +355,7 @@ class SiteView {
     return {
       sunEl: lerp('sun_el'), sunAz: lerpAz('sun_az'),
       earthEl: lerp('earth_el'), earthAz: lerpAz('earth_az'),
-      power: this.power[i] + (this.power[i + 1] - this.power[i]) * f,
+      sunPerM2: this.sunPerM2[i] + (this.sunPerM2[i + 1] - this.sunPerM2[i]) * f,
       timeMs: Date.parse(s[0].t) + t * 3600e3,
     };
   }
@@ -373,7 +370,7 @@ class SiteView {
     const s = this.sample();
     const sunDir = dirFromAzEl(s.sunAz, s.sunEl);
     const earthDir = dirFromAzEl(s.earthAz, s.earthEl);
-    const scale = this.enlarge ? 6 : 1;
+    const scale = this.sunScale;
 
     // Sun
     const sunR = SKY_D * Math.tan(SUN_RADIUS_DEG * D2R) * scale;
@@ -388,7 +385,7 @@ class SiteView {
     this.sunLight.intensity = s.sunEl > -SUN_RADIUS_DEG ? 3 : 0;
 
     // Earth and its phase (fraction of the disc lit, as seen from the Moon)
-    const earthR = SKY_D * Math.tan(EARTH_RADIUS_DEG * D2R) * (this.enlarge ? 3 : 1);
+    const earthR = SKY_D * Math.tan(EARTH_RADIUS_DEG * D2R) * this.earthScale;
     this.earth.position.copy(earthDir).multiplyScalar(SKY_D);
     this.earth.scale.setScalar(earthR);
     this.earthMat.uniforms.sunDir.value.copy(sunDir);
@@ -430,7 +427,7 @@ class SiteView {
       <div>🌍 Earth <b>${s.earthEl.toFixed(1)}°</b> el · ${s.earthAz.toFixed(0)}° az ${earthBlocked ? '<span class="warn">behind terrain</span>' : ''}</div>
       <div class="muted">${earthEvent} · ${(earthLit * 100).toFixed(0)}% lit</div>
       <hr>
-      <div>⚡ Power <b>${sunBlocked ? 0 : s.power.toFixed(0)} W</b>${sunBlocked ? ' <span class="muted">(terrain shadow)</span>' : ''}</div>
+      <div>⚡ Sunlight on panel <b>${sunBlocked ? 0 : s.sunPerM2.toFixed(0)} W/m²</b>${sunBlocked ? ' <span class="muted">(terrain shadow)</span>' : ''}</div>
       <div>📡 Direct-to-Earth comms <b class="${earthUp ? 'ok' : 'warn'}">${earthUp ? 'available' : 'none'}</b></div>
       <div>${sunUp ? '🌞 Daylight' : '🌑 Dark'}</div>`;
   }

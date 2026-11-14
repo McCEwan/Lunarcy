@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from api import lola
+from api.paths import lola_dir
 from api.lola import (
     DetailedHeights, DetailPatch, DetailStore, LolaGlobalHeights, cyl_tile_name, destination,
     local_en, parse_multipart_byteranges, polar_pixel,
@@ -93,12 +94,22 @@ def test_detail_store_fetches_once_then_caches(tmp_path):
     assert np.array_equal(p1.grid, p2.grid)
 
 
-@pytest.mark.skipif(not (DATA / "lola" / "ldem_64.img").exists(), reason="run scripts/fetch_lola.py")
-def test_real_ldem64_matches_published_im1_elevation():
-    # NASA's LRO release puts Odysseus (IM-1) at about 2,579 m; one LDEM_64 pixel is ~474 m.
-    g = LolaGlobalHeights.load(DATA)
-    assert g.heights(-80.13, 1.44) == pytest.approx(2579, abs=80)
-    assert g.heights(0.6741, 23.473) == pytest.approx(-1925, abs=80)     # Apollo 11
+REAL_GRID = LolaGlobalHeights.load(lola_dir(), DATA / "lola")
+
+
+@pytest.mark.skipif(REAL_GRID is None, reason="run scripts/fetch_lola.py")
+def test_real_global_grid_matches_published_im1_elevation():
+    # NASA's LRO release puts Odysseus (IM-1) at about 2,579 m; a global pixel is ~237-474 m.
+    assert REAL_GRID.heights(-80.13, 1.44) == pytest.approx(2579, abs=80)
+    assert REAL_GRID.heights(0.6741, 23.473) == pytest.approx(-1925, abs=80)     # Apollo 11
+
+
+def test_loader_prefers_the_sharpest_grid(tmp_path):
+    (tmp_path / "ldem_64.img").write_bytes(b"")                     # wrong size: ignored
+    assert LolaGlobalHeights.load(tmp_path) is None
+    np.zeros((180 * 64, 360 * 64), "<i2").tofile(tmp_path / "ldem_64.img")
+    g = LolaGlobalHeights.load(tmp_path)
+    assert g.ppd == 64 and "LDEM_64" in g.source and round(g.resolution_m) == 474
 
 
 @pytest.mark.skipif(not os.environ.get("RUN_LIVE"), reason="set RUN_LIVE=1 to download from NASA PDS")

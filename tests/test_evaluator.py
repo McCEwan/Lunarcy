@@ -51,7 +51,16 @@ def test_power_is_zero_at_night():
     r = evaluator.evaluate(0, 0, terrain=FLAT, search_start=START, ephem=EPHEM)
     for sky, power in zip(r["sky"], r["power_w"]):
         if sky["sun_el"] <= 0:
-            assert power["w"] == 0
+            assert power["w"] == 0 and power["w_m2"] == 0
+
+
+def test_sunlight_per_m2_on_a_flat_panel():
+    import math
+    r = evaluator.evaluate(0, 0, terrain=FLAT, search_start=START, ephem=EPHEM)
+    for sky, power in zip(r["sky"], r["power_w"]):
+        if sky["sun_visible"]:
+            assert power["w_m2"] == pytest.approx(1361 * math.sin(math.radians(sky["sun_el"])), abs=0.2)
+    assert max(p["w_m2"] for p in r["power_w"]) <= 1361
 
 
 def test_steep_slope_fails_slope_check():

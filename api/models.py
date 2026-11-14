@@ -79,7 +79,8 @@ class Events(BaseModel):
 
 class PowerPoint(BaseModel):
     t: str
-    w: float
+    w: float           # electrical output of the lander's (or a 1 m², 30% reference) panel
+    w_m2: float        # sunlight arriving on a flat panel per m² (0 in terrain shadow)
 
 
 class CommsPoint(BaseModel):

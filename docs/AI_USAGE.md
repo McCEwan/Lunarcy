@@ -105,6 +105,29 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
   - The first detailed fetch needs internet and takes 3–7 s per site. Planned-site coordinates are approximate, so their "detailed" terrain is of the approximate point.
   - **Overlap with teammate:** at the user's request, `terrain.py` and `build_grids.py` were changed, the files the teammate was working in. Needs a conversation before merging.
 
+### 2026-11-14 · Session 5: panel sunlight per m², colour-coded stats, compared-sites panel, LDEM_128
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** a list of UI and data changes: power per m², enlarged Sun/Earth by default, replace the 2× relief option, red/yellow/green stats with a legend, the compared sites on the left, and a higher-resolution map. The AI asked clarifying questions in two rounds. Decisions: show *sunlight arriving on the panel* per m²; remove the 2× stretch entirely (no dropdown); keep the global map as the default (30 m stays on the button); download LDEM_128; keep the globe image; store the big data outside OneDrive.
+- **What the AI did:**
+  - Told the user the real sizes before downloading: 30 m LOLA for the whole Moon is ~136 GB (not practical); LDEM_128 is 2.1 GB, LDEM_256 8.5 GB, LDEM_512 34 GB. It also flagged that globe.gl's zoomable-map support uses web-map tiles that stop at ±85° latitude (no poles).
+  - Spotted that the project is in OneDrive, so a 2.1 GB download would also upload to the cloud (free plans have 5 GB). Moved big data to `~/LunarPlannerData` (`api/paths.py`, override with `LUNAR_DATA_DIR`) and downloaded LDEM_128 there.
+  - Added `w_m2` (sunlight on a flat panel per m²) to `/evaluate` and showed it instead of watts in the tiles, summaries and 3D readout.
+  - Made the 3D view always true-scale vertically (removed 2× relief) and drew the Sun and Earth 6× and 3× true size, said on screen.
+  - Added colour-coded stat tiles (`rateStats()` in `web/app.js`), with thresholds tied to the evaluator's pass/fail limits and the lander's slope limit, hover explanations, and a legend. Placeholder temperature and elevation are deliberately not rated.
+  - Added a semi-transparent compared-sites panel on the left: click to fly to a site and expand its summary, × to remove.
+- **Checks the AI ran on its own output:**
+  - In the browser: added IM-1 and Apollo 11, clicked between them, and the globe moved and the summary switched. IM-1's slope (9.3° against Nova-C's 10°) and lunar-day sunlight (45%) showed yellow; Apollo 11's showed green.
+  - 3D readout of 174 W/m² with the Sun at 7.4°, matching 1,361 × sin(7.4°) ≈ 175.
+  - LDEM_128 vs LDEM_64 at IM-1: elevation 2,595 m (published ~2,579 m; LDEM_64 gave 2,602 m), and global-level slope 12.4° (published ~12°; LDEM_64 gave 9.3°). Shackleton's floor is still 0% sunlit.
+  - Tests: 61 passing offline, plus 18 live, including new ones for `w_m2` and choosing the sharpest LOLA grid.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:**
+  - The colour thresholds are the team's judgement calls (documented in `docs/ARCHITECTURE.md`), not NASA standards.
+  - Panel sunlight assumes a flat, upward-facing panel. Real landers often use vertical or tilted panels at the poles, which catch far more of a low Sun.
+  - Teammates must set up `~/LunarPlannerData` themselves (`python scripts/fetch_lola.py`).
+
 ---
 
 ## Entry template

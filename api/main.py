@@ -18,6 +18,7 @@ from .evaluator import evaluate
 from .lola import DetailedHeights, DetailStore, LolaGlobalHeights
 from .models import EvaluateRequest, EvaluateResponse
 from .patch import SyntheticHeights, horizon_profile, terrain_patch
+from .paths import PROJECT_DATA, lola_detail_dir, lola_dir
 from .terrain import Terrain
 
 logging.basicConfig(level=logging.INFO)
@@ -39,14 +40,17 @@ EPHEM = (
     else HorizonsEphemeris(cache_dir=ROOT / "data" / "horizons_cache")
 )
 
-# Elevation, level 1 (global estimate): real LOLA LDEM_64 if downloaded
-# (scripts/fetch_lola.py), else the labelled synthetic placeholder.
-GLOBAL_HEIGHTS = LolaGlobalHeights.load(ROOT / "data") or SyntheticHeights()
+# Elevation, level 1 (global estimate): the sharpest real LOLA grid downloaded by
+# scripts/fetch_lola.py (LDEM_128, else LDEM_64), else the labelled synthetic placeholder.
+# Big data lives outside the project (api/paths.py); data/lola is the old location.
+GLOBAL_HEIGHTS = LolaGlobalHeights.load(lola_dir(), PROJECT_DATA / "lola") or SyntheticHeights()
 if isinstance(GLOBAL_HEIGHTS, SyntheticHeights):
-    log.warning("LOLA LDEM_64 not found: using PLACEHOLDER synthetic terrain. Run scripts/fetch_lola.py")
+    log.warning("No LOLA grid in %s: using PLACEHOLDER synthetic terrain. Run scripts/fetch_lola.py", lola_dir())
+else:
+    log.info("Global elevation: %s", GLOBAL_HEIGHTS.source)
 
 # Elevation, level 2 (detailed): ~30 m LOLA patches fetched on demand and cached on disk.
-DETAIL = DetailStore(ROOT / "data" / "lola_detail")
+DETAIL = DetailStore(lola_detail_dir())
 _detailed_sources: dict[str, DetailedHeights] = {}
 
 app = FastAPI(title="Lunar Planner")

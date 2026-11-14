@@ -14,7 +14,7 @@ It is built on the three NASA tools the challenge recommends:
 | Tool | How we use it |
 |---|---|
 | **JPL Horizons** | The source of truth for Sun and Earth azimuth/elevation from any lunar surface point, given the site's LOLA elevation as its altitude. Also gives the sub-solar and sub-Earth points that light the globe (`api/ephemeris.py`). |
-| **LRO LOLA (NASA PDS)** | Real elevation at two levels: the global LDEM_64 grid (~474 m) for every click, and ~30 m data fetched on demand around a site (`api/lola.py`). Drives site elevation and slope, the 3D terrain, and the terrain skyline that blocks the Sun and Earth. This is the same LOLA data Moon Trek and QuickMap display. |
+| **LRO LOLA (NASA PDS)** | Real elevation at two levels: the global LDEM_128 grid (~237 m) for every click, and ~30 m data fetched on demand around a site (`api/lola.py`). Drives site elevation and slope, the 3D terrain, and the terrain skyline that blocks the Sun and Earth. This is the same LOLA data Moon Trek and QuickMap display. |
 | **Moon Trek** | Global map layers (WAC imagery, LOLA elevation, LOLA slope, Diviner max temperature), stitched from its WMTS tiles into globe textures (`scripts/fetch_moontrek_layers.py`), plus a deep link per site. |
 | **QuickMap** | A deep link per site that opens LROC QuickMap zoomed to it, for high-resolution imagery and its visibility tools. |
 
@@ -58,10 +58,11 @@ The comparison view is just the frontend's list of cached `/evaluate` results. I
 - **Pop-up:** sky chart (Sun and Earth positions over the horizon), stat tiles, **Confirm** and **Add to comparison** buttons.
 - **Timeline:** a horizontal strip. Valid windows are filled, invalid dates are not selectable.
 - **Visualizations:**
-  - Solar power (watts) over the landing window, as a line chart.
+  - Sunlight on the panel (W/m²) over the landing window, as a line chart.
   - Earth communications access over time at that site, as a strip or area chart.
-- **Comparison list:** a sidebar. Clicking a row makes that site active and swaps the pop-up, charts and lander model to it.
-- **3D site view (`web/site3d.js`, three.js 0.170 via the import map in `index.html`):** a 20 × 20 km terrain mesh from `/terrain/patch` (1× scale, with a 2× option, and the Moon's curvature applied), a directional light at the Sun's Horizons az/el with shadows, the Sun and Earth drawn at their true angular sizes (with an "enlarge" option), and Earth's phase from the Sun/Earth geometry. Also shown: the skyline from `/terrain/horizon` and N/E/S/W labels. A timelapse plays the `/evaluate` series from the landing hour to mission end (or across a lunar day if no landing is chosen), with play/pause, speed and a scrubber. The readout shows UTC time, T+, Sun and Earth az/el, power, comms, time to sunset/Earthset, and "behind terrain" when the skyline blocks the Sun or Earth. Moon and Earth surfaces are generic textures by design. Coordinates: x = east, y = up, z = −north, and direction = `(sin az·cos el, sin el, −cos az·cos el)`. `window.__lunar3d` exposes the live view for debugging. The view uses the site's terrain level (global: 257² vertices; detailed: 513²) and has its own "Get detailed terrain" button, which reopens it at the same moment. Terrain beyond the 20 km patch still casts shadows through an invisible **skyline occluder**: a ring just outside the patch, as tall as the real skyline in each direction, that only casts shadows. It's exact at the landing site and approximate elsewhere.
+- **Compared sites (left panel):** a semi-transparent panel on the left of the globe lists the sites added with "Add to comparison". Clicking one makes it active, flies the globe to it and expands a summary (lander, landing time, coloured sunlight/Earth/slope/panel-sunlight, terrain level). × removes it.
+- **Stat colours:** site tiles and summaries are green/yellow/red (`rateStats()` in `web/app.js`), tied to the evaluator thresholds and the lander's limits. Green = passes with margin, yellow = close to the limit, red = fails or poor. Thresholds show on hover; the legend is bottom-left. Sunlight uses 75/60% over a mission or 45/30% over a lunar day, Earth 95/80%, slope 0.7×limit/limit, and peak panel sunlight 500/150 W/m². Elevation and (placeholder) temperature aren't rated.
+- **3D site view (`web/site3d.js`, three.js 0.170 via the import map in `index.html`):** a 20 × 20 km terrain mesh from `/terrain/patch` (true 1× vertical scale, with the Moon's curvature applied), a directional light at the Sun's Horizons az/el with shadows, the Sun and Earth drawn 6× and 3× their true angular size so they're visible (said on screen), and Earth's phase from the Sun/Earth geometry. Also shown: the skyline from `/terrain/horizon` and N/E/S/W labels. A timelapse plays the `/evaluate` series from the landing hour to mission end (or across a lunar day if no landing is chosen), with play/pause, speed and a scrubber. The readout shows UTC time, T+, Sun and Earth az/el, sunlight on the panel (W/m²), comms, time to sunset/Earthset, and "behind terrain" when the skyline blocks the Sun or Earth. Moon and Earth surfaces are generic textures by design. Coordinates: x = east, y = up, z = −north, and direction = `(sin az·cos el, sin el, −cos az·cos el)`. `window.__lunar3d` exposes the live view for debugging. The view uses the site's terrain level (global: 257² vertices; detailed: 513²) and has its own "Get detailed terrain" button, which reopens it at the same moment. Terrain beyond the 20 km patch still casts shadows through an invisible **skyline occluder**: a ring just outside the patch, as tall as the real skyline in each direction, that only casts shadows. It's exact at the landing site and approximate elsewhere.
 - **Globe lighting:** a "Light by the real Sun" toggle (on by default) points globe.gl's directional light from the Horizons sub-solar point and shows Sun/Earth markers. The time used is the chosen landing time, or now. `window.__globe` exposes the globe for debugging.
 - **State:** one array of sites in memory:
 
@@ -75,9 +76,9 @@ Remember that globe.gl uses `lng` and the API uses `lon`.
 - **Stack:** FastAPI + Uvicorn, Pydantic models. FastAPI also serves `web/` as static files, so one process, one port, no CORS **(recommended)**.
 - **Endpoints:** `POST /evaluate`, `GET /landers`, `GET /sites`, `POST /terrain/detail`, `GET /terrain/patch`, `GET /terrain/horizon`, `GET /sky/subpoints`, `GET /health`.
 - **Elevation, two levels (`lola.py`).** Both levels are *height sources*: `heights(lat_deg, lon_deg) -> metres` above the 1737.4 km sphere (the same reference radius as Horizons), plus `source` and `resolution_m`.
-  - **Global estimate:** `LolaGlobalHeights` memory-maps LOLA **LDEM_64** (64 px/deg, ~474 m, 531 MB, downloaded once by `scripts/fetch_lola.py` into `data/lola/`). Instant for any point. If the file is missing, `main.GLOBAL_HEIGHTS` falls back to `patch.SyntheticHeights` (labelled PLACEHOLDER).
-  - **Detailed (on demand):** `fetch_detail_patch()` builds a 30 × 30 km, 30 m local grid from NASA PDS using HTTP multi-range requests. Only the needed rows come down (a few MB out of 0.5–2 GB files), in 3–7 s, then it's cached in `data/lola_detail/`. Below 76° latitude it uses LDEM_1024 cylindrical tiles (~30 m, crossing tile edges and the 0/360 seam). Above 76° it uses the LDEM_75S/75N_30M polar stereographic grids. `DetailedHeights` uses the patch within 15 km and the global grid beyond, so distant mountains still count.
-  - Validation: LDEM_64 gives 2,602 m at IM-1, against NASA's published ~2,579 m. The polar and cylindrical detailed products agree (correlation 0.999, mean difference under 3 m). Detailed slope at IM-1 is 13.3° over 60 m; a published study of the landing site gives about 12°.
+  - **Global estimate:** `LolaGlobalHeights` memory-maps LOLA **LDEM_128** (128 px/deg, ~237 m, 2.1 GB; LDEM_64 also works), downloaded once by `scripts/fetch_lola.py`. Big data lives **outside the project**, in `~/LunarPlannerData/` (or `$LUNAR_DATA_DIR`, see `api/paths.py`), so it stays out of git and OneDrive. Instant for any point. If the file is missing, `main.GLOBAL_HEIGHTS` falls back to `patch.SyntheticHeights` (labelled PLACEHOLDER).
+  - **Detailed (on demand):** `fetch_detail_patch()` builds a 30 × 30 km, 30 m local grid from NASA PDS using HTTP multi-range requests. Only the needed rows come down (a few MB out of 0.5–2 GB files), in 3–7 s, then it's cached in `~/LunarPlannerData/lola_detail/`. Below 76° latitude it uses LDEM_1024 cylindrical tiles (~30 m, crossing tile edges and the 0/360 seam). Above 76° it uses the LDEM_75S/75N_30M polar stereographic grids. `DetailedHeights` uses the patch within 15 km and the global grid beyond, so distant mountains still count.
+  - Validation: LDEM_64 gave 2,602 m at IM-1, against NASA's published ~2,579 m. The polar and cylindrical detailed products agree (correlation 0.999, mean difference under 3 m). Detailed slope at IM-1 is 13.3° over 60 m; a published study of the landing site gives about 12°.
 - **Local terrain (`patch.py`):** products built from a height source.
   - `GET /terrain/patch?lat&lon&size_km=20&n=256&level=global|detailed` → `{center_lat, center_lon, size_m, n, spacing_m, projection: "local-tangent", center_height_m, heights: [n·n, row-major, row 0 = north edge, col 0 = west edge, null = hole], source, level}`. Curvature is not removed (the client applies it).
   - `GET /terrain/horizon?lat&lon&radius_km=150&level=global|detailed` → `{azimuth_step_deg: 1, elevation_deg: [360 values, clockwise from north], radius_m, observer_height_m: 2, source, level}`. Calculated by marching 300 log-spaced samples out to the radius along each azimuth, including curvature. Takes about 0.2 s and is cached.
@@ -86,7 +87,7 @@ Remember that globe.gl uses `lng` and the API uses `lon`.
 - **`evaluator.py`:** `evaluate(lat, lon, terrain=..., ephem=..., lander=..., ...) -> Result`. It does no I/O itself. The ephemeris provider is passed in, so tests use the offline one.
 - **Ephemeris (`ephemeris.py`):** `HorizonsEphemeris` calls the JPL Horizons API (`CENTER='coord@301'`, `SITE_COORD='lon,lat,alt_km'` with the site's LOLA elevation (the "Horizons refinement"), `QUANTITIES='4'`) for the Sun (`10`) and Earth (`399`) in parallel, hourly. Responses are cached on disk in `data/horizons_cache/`. A first call for a new site takes about 1–2 s, and a cached call about 10 ms. If Horizons can't be reached, it falls back to `AnalyticEphemeris` and the response's `sources` says so. Set `EPHEMERIS=analytic` to force offline mode. Horizons uses the Moon's mean-Earth (ME) frame, the same frame as LOLA.
 - **Notable sites (`data/sites.json`):** Apollo 11–17, Surveyor 1, Luna 9/16/17/21/24, Chang'e 3–6, Chandrayaan-3, SLIM, IM-1, Blue Ghost M1, IM-2, plus planned CLPS targets. Planned sites without published coordinates have `precision: "region"` and a `note`. Each entry cites a `source`.
-- **Site stats (`terrain.py`):** elevation and slope come from the active height source. Slope is a central difference across one source pixel: ~950 m at the global level, 60 m at the detailed level. Either way it's a terrain-scale slope, not a boulder-scale one. The temperature range is still a **PLACEHOLDER** grid (`scripts/build_grids.py`) until Diviner is added.
+- **Site stats (`terrain.py`):** elevation and slope come from the active height source. Slope is a central difference across one source pixel: ~470 m at the global level (LDEM_128), 60 m at the detailed level. Either way it's a terrain-scale slope, not a boulder-scale one. The temperature range is still a **PLACEHOLDER** grid (`scripts/build_grids.py`) until Diviner is added.
 - **Landers:** `landers.json` holds published specs per CLPS lander: name, operator, mass, payload capacity, solar array area and efficiency, max slope, operating temperature range, transit time. Each entry has a `source` URL.
 
 ## How the numbers are computed
@@ -98,7 +99,8 @@ Remember that globe.gl uses `lng` and the API uses `lon`.
 | Sun/Earth *visible* | Elevation above the skyline at that azimuth (`sun_visible`/`earth_visible` per step). Everything below uses this. |
 | Time to sunset / Earthset | First horizon crossing in the series (`events`) |
 | % time in sunlight | Fraction of timesteps with the Sun visible (above the terrain skyline). `sunlight_pct_flat` gives the smooth-horizon value for comparison. |
-| Solar watts | `1361 W/m² × sin(sun_elev) × panel_area × efficiency`, zero when the Sun is below the skyline (terrain shadow) or the horizon. |
+| Sunlight on the panel (shown in the UI) | `w_m2 = 1361 W/m² × sin(sun_elev)` on a flat panel, per m², before efficiency; zero in terrain shadow or below the horizon. |
+| Solar watts (`w`, kept for compatibility) | `w_m2 × panel_area × efficiency` (the lander's, or 1 m² at 30%). |
 | Earth visibility / comms access | Fraction of timesteps with Earth above the skyline (`earth_visible_pct_flat` for comparison). The far side correctly shows zero. |
 | Sunrise/sunset, Earthrise/Earthset | First visibility change in the series, so a crater rim delays "sunrise". |
 | Slope, elevation | LOLA height source (global or detailed), bilinear; slope over one pixel each side |
@@ -140,8 +142,8 @@ Default time resolution is 1 hour over one lunar day (about 29.5 days). Use vect
 {
   "terrain": {
     "level": "global",
-    "heights_source": "NASA LRO LOLA LDEM_64 global elevation (~474 m/pixel), PDS Geosciences Node",
-    "resolution_m": 473.8,
+    "heights_source": "NASA LRO LOLA LDEM_128 global elevation (~237 m/pixel), PDS Geosciences Node",
+    "resolution_m": 236.9,
     "site_elevation_m": -1850.0,
     "skyline_max_deg": 2.4,
     "detailed_cached": false
@@ -158,7 +160,7 @@ Default time resolution is 1 hour over one lunar day (about 29.5 days). Use vect
   },
   "sky": [{ "t": "2027-03-14T00:00Z", "sun_el": 3.1, "sun_az": 91.2, "earth_el": 7.5, "earth_az": 12.0, "sun_visible": true, "earth_visible": true }],
   "events": { "sunrise": null, "sunset": "2027-03-27T05:00Z", "earthrise": null, "earthset": "2027-03-20T11:00Z" },
-  "power_w": [{ "t": "2027-03-14T00:00Z", "w": 142.0 }],
+  "power_w": [{ "t": "2027-03-14T00:00Z", "w": 142.0, "w_m2": 73.6 }],
   "comms": [{ "t": "2027-03-14T00:00Z", "visible": true }],
   "windows": [{ "start": "2027-03-10", "end": "2027-03-22", "start_time": "2027-03-10T07:00Z", "end_time": "2027-03-22T18:00Z" }],
   "launch_estimate": "2027-03-08",
@@ -203,7 +205,7 @@ No auth, queues or retries.
 | Hosting | FastAPI serves static files | One process, no CORS |
 | Number of endpoints | One core (`/evaluate`) | Same function answers every step; optional fields make it progressive |
 | Comparison storage | Browser memory | No accounts, no database, instant swapping |
-| Terrain data | LOLA at two levels: LDEM_64 on disk, ~30 m on demand via HTTP range requests | Real NASA elevation everywhere instantly; detail only where it's asked for, without multi-GB downloads |
+| Terrain data | LOLA at two levels: LDEM_128 on disk (outside the project), ~30 m on demand via HTTP range requests | Real NASA elevation everywhere instantly; detail only where it's asked for, without multi-GB downloads |
 | Terrain-aware visibility | Skyline from LOLA applied to every Sun/Earth number | Crater floors and rims get correct sunlight and comms (e.g. Shackleton's floor: 0% sun vs 100% on a flat horizon) |
 | Ephemeris | JPL Horizons API + disk cache, analytic fallback | Recommended by the challenge and our mentor. Authoritative, no kernels to install. Cache plus fallback keep demos working offline. |
 | Map layers | Moon Trek WMTS tiles stitched once into local textures | Real NASA data with no runtime dependency on Trek |
@@ -223,7 +225,7 @@ No auth, queues or retries.
 ## Run it
 
 ```bash
-python scripts/fetch_lola.py             # once: 531 MB LOLA global elevation
+python scripts/fetch_lola.py             # once: 2.1 GB LOLA global elevation (outside the project)
 python scripts/build_grids.py            # once: placeholder temperature grids
 python scripts/fetch_moontrek_layers.py  # once (textures are also committed)
 uvicorn api.main:app --reload

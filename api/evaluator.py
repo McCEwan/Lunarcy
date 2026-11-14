@@ -78,6 +78,8 @@ def evaluate(
     else:
         area, eff = REFERENCE_PANEL_M2, REFERENCE_PANEL_EFF
     power = _power_w(sun_el, area, eff) * sun_vis
+    # Sunlight arriving on a flat, upward-facing panel, per m² (before panel efficiency).
+    irradiance = np.clip(SOLAR_CONSTANT_W_M2 * np.sin(np.radians(sun_el)), 0, None) * sun_vis
 
     checks: list[dict] = []
     windows = None
@@ -129,7 +131,10 @@ def evaluate(
             "earthrise": _first_crossing(earth_vis, labels, rising=True),
             "earthset": _first_crossing(earth_vis, labels, rising=False),
         },
-        "power_w": [{"t": t, "w": round(float(w), 1)} for t, w in zip(labels, power)],
+        "power_w": [
+            {"t": t, "w": round(float(w), 1), "w_m2": round(float(i), 1)}
+            for t, w, i in zip(labels, power, irradiance)
+        ],
         "comms": [{"t": t, "visible": bool(v)} for t, v in zip(labels, earth_vis)],
         "windows": windows,
         "launch_estimate": launch_estimate,

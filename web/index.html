@@ -19,13 +19,29 @@
 <body>
   <div id="globe"></div>
 
-  <!-- Map layer switcher (NASA Moon Trek layers) -->
-  <div id="layers" class="overlay">
-    <div class="overlay-title">Map layer · NASA Moon Trek</div>
-    <div id="layer-buttons"></div>
-    <label class="check"><input type="checkbox" id="show-sites" checked> Show notable landing sites</label>
-    <label class="check"><input type="checkbox" id="real-sun" checked> Light by the real Sun · show Sun &amp; Earth</label>
-    <div id="sky-caption" class="small muted"></div>
+  <!-- Left column over the globe: map layers, then the compared landing sites -->
+  <div id="left-col">
+    <div id="layers" class="overlay">
+      <div class="overlay-title">Map layer · NASA Moon Trek</div>
+      <div id="layer-buttons"></div>
+      <label class="check"><input type="checkbox" id="show-sites" checked> Show notable landing sites</label>
+      <label class="check"><input type="checkbox" id="real-sun" checked> Light by the real Sun · show Sun &amp; Earth</label>
+      <div id="sky-caption" class="small muted"></div>
+    </div>
+    <div id="compare-panel" class="overlay">
+      <div class="overlay-title">Compared landing sites</div>
+      <p id="compare-empty" class="small muted">Pick a site, then press “Add to comparison”. Click a site here to fly back to it.</p>
+      <ul id="compare-list" class="compare"></ul>
+    </div>
+  </div>
+
+  <!-- Colour legend for the site stats -->
+  <div id="legend" class="overlay small">
+    <div class="overlay-title">Stat colours</div>
+    <div><span class="swatch good"></span>Comfortably within limits</div>
+    <div><span class="swatch warn"></span>Close to a limit</div>
+    <div><span class="swatch bad"></span>Outside the limit / poor</div>
+    <div class="muted">Hover a stat to see its thresholds. Grey = not rated.</div>
   </div>
 
   <aside id="panel">
@@ -55,6 +71,7 @@
       <div class="tiles" id="site-tiles"></div>
       <div id="site-links" class="links small"></div>
       <button id="view3d-btn" disabled>Open 3D view</button>
+      <button id="compare-btn" class="secondary" disabled>Add to comparison</button>
       <!-- TODO (frontend): sky chart (sun_az/sun_el, earth_az/earth_el), power chart, comms strip -->
     </section>
 
@@ -83,12 +100,6 @@
       <h2>Verdict <span id="verdict" class="badge"></span></h2>
       <p id="launch" class="small muted"></p>
       <ul id="checks" class="checks"></ul>
-      <button id="compare-btn">Add to comparison</button>
-    </section>
-
-    <section id="compare-section" hidden>
-      <h2>Comparison</h2>
-      <ul id="compare-list" class="compare"></ul>
     </section>
 
     <p id="loading" class="small muted" hidden>Asking JPL Horizons…</p>
@@ -112,8 +123,6 @@
         </span>
         <span id="v3d-level" class="small"></span>
         <button id="v3d-detail" class="chip" hidden>Get detailed terrain</button>
-        <label class="check"><input type="checkbox" id="v3d-exag"> 2× relief</label>
-        <label class="check"><input type="checkbox" id="v3d-enlarge"> Enlarge Sun &amp; Earth</label>
         <button id="v3d-close" class="chip" title="Close (Esc)">✕ Close</button>
       </div>
     </div>
