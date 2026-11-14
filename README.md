@@ -19,7 +19,7 @@ python -m venv .venv
 .venv\Scripts\activate            # Windows (macOS/Linux: source .venv/bin/activate)
 pip install -r requirements.txt
 python scripts/fetch_lola.py       # once: 2.1 GB NASA LOLA global elevation into ~/LunarPlannerData/
-python scripts/build_grids.py      # once: placeholder temperature grids
+python scripts/fetch_diviner.py    # once (~5 min, streams 2.8 GB, keeps 2 MB): real Diviner temperatures
 python scripts/build_skylines.py   # once, optional (~10-15 min): terrain skylines for the site finder
 uvicorn api.main:app --reload
 ```
@@ -37,7 +37,7 @@ The Moon Trek textures are already in `web/assets/moontrek/`. Rebuild them with 
 | Elevation and slope (`api/lola.py`) | **Real:** NASA LOLA. Global estimate from LDEM_128 (~237 m) everywhere; detailed ~30 m on demand ("Get detailed terrain"). |
 | Terrain blocking the Sun/Earth | **Real:** skyline from LOLA applies to sunlight %, power, comms, windows and rise/set times (flat-horizon values shown alongside). |
 | Globe day/night + Sun/Earth markers | **Real** directions from Horizons sub-solar/sub-Earth points (markers not to scale). |
-| Temperature | **Placeholder** until Diviner data is added (`scripts/build_grids.py`). |
+| Temperature | **Real:** NASA LRO Diviner night low / day high per 0.5° cell (`scripts/fetch_diviner.py`). Falls back to a labelled placeholder if not downloaded. |
 | Notable landing sites (`api/data/sites.json`) | **Real** for past landings (cited). Planned CLPS sites are **approximate regions**. |
 | Globe textures | **Real:** NASA Moon Trek layers |
 | Lander specs (`api/data/landers.json`) | Partly real. Unpublished values are listed in `estimated_fields`. |
@@ -49,7 +49,7 @@ The Moon Trek textures are already in `web/assets/moontrek/`. Rebuild them with 
 
 The `/evaluate` contract is the boundary, and the frontend never depends on how the numbers are calculated.
 
-- **Backend:** Diviner temperatures → pre-download detailed terrain for the listed sites (instant demo) → tune the checks → more landers.
+- **Backend:** pre-download detailed terrain for the listed sites (instant demo) → tune the checks → more landers.
 - **Frontend:** sky chart (az/el) → timeline of valid windows → panel-sunlight (W/m²) and comms charts → lander model on the globe.
 
 Work on a branch, keep PRs small, update the design doc if you change the contract, and add an entry to `docs/AI_USAGE.md` after each AI-assisted session.

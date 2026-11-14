@@ -169,6 +169,23 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
   - Skylines are 4° azimuth steps from the ~237 m global grid, and the Sun is treated as a point.
   - Big regions are summarised by their best cell; "area" is the whole connected region.
 
+### 2026-11-14 · Session 8: real surface temperatures from LRO Diviner
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app
+- **Prompted with:** "the teammate is no longer creating data for this; this is what you should be doing; please finish with the file". The one remaining placeholder was temperature (`build_grids.py`), which had been the teammate's task.
+- **What the AI did:**
+  - Found NASA's Diviner Global Cumulative Products on PDS: 18 fixed-width tables, 0.5° cells × 96 local-time bins, bolometric temperature in K. Wrote `scripts/fetch_diviner.py`, which streams each 156 MB band, keeps only each cell's coldest and hottest bin (night low, day high) and discards the rest. Result: a ~2 MB file in `~/LunarPlannerData/`.
+  - `api/terrain.py` uses the Diviner grid (cell-centred bilinear, longitude wrap, skips cells without data), with the placeholder kept only as a labelled fallback. The site tile, comparison table and colour rating now treat temperature as real data, rated against the lander's (estimated) limit.
+- **Checks the AI ran on its own output:**
+  - Apollo 11's cell reads 95 K at night and 396 K at noon, matching the familiar lunar equatorial range of roughly 100 K to 390 K. Band maxima run from ~400 K at the equator down to ~50–320 K at 80–90°S, as expected for the poles.
+  - Tests for the cell-centred lookup, the longitude seam, missing cells and source preference (79+ passing).
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:**
+  - 0.5° cells (~15 km) blur small cold traps inside polar craters.
+  - The values are multi-year averages per local time, not a specific date.
+  - The lander temperature limits in `landers.json` are still estimates.
+
 ---
 
 ## Entry template

@@ -4,12 +4,16 @@
   global grid (~474 m) or a detailed LOLA patch (~30 m) once fetched. Slope is
   measured across the source's own pixel size, so it's a terrain-scale slope,
   not a boulder-scale one; the slope check says which baseline it used.
-- Temperature min/max are still PLACEHOLDER grids (data/tmin_k.npy, tmax_k.npy
-  from scripts/build_grids.py) until Diviner data is added.
+- Temperature min/max come from real NASA LRO Diviner measurements
+  (~/LunarPlannerData/diviner_tbol_minmax.npz, built by scripts/fetch_diviner.py):
+  0.5° cells, the hottest and coldest of 96 local-time bins of bolometric temperature.
+  If that file is missing, the labelled PLACEHOLDER grids from scripts/build_grids.py
+  (data/tmin_k.npy, tmax_k.npy) are used instead.
 
-Temperature grid convention (shared with scripts/build_grids.py):
-  equirectangular float32, shape (n_lat, n_lon), NaN marks a hole;
-  row 0 = latitude -90, last row = +90; column 0 = longitude -180, last = +180.
+Grid conventions:
+  Diviner (cell-centred): shape (360, 720); row 0 = 89.75°S, column 0 = 179.75°W.
+  Placeholder (node grid): shape (n_lat, n_lon); row 0 = -90, last row = +90;
+  column 0 = -180, last column = +180.
 """
 
 from __future__ import annotations
@@ -36,20 +40,29 @@ class TerrainSample:
 
 
 class Terrain:
-    def __init__(self, temps: dict[str, np.ndarray] | None, temp_source: str | None = None):
+    def __init__(self, temps: dict[str, np.ndarray] | None, temp_source: str | None = None,
+                 cell_centred: bool = False):
         self.temps = temps
         self.temp_source = temp_source
+        self.cell_centred = cell_centred
 
     @property
     def loaded(self) -> bool:
         return self.temps is not None
 
     @property
+    def real(self) -> bool:
+        return self.loaded and not (self.temp_source or "").startswith("PLACEHOLDER")
+
+    @property
     def source(self) -> str | None:
         return self.temp_source
 
     @classmethod
-    def load(cls, data_dir: Path) -> "Terrain":
+    def load(cls, data_dir: Path, diviner_path: Path | None = None) -> "Terrain":
+        if diviner_path and diviner_path.exists():
+            z = np.load(diviner_path)
+            return cls({f: z[f] for f in TEMP_FIELDS}, str(z["source"]), cell_centred=True)
         paths = {f: data_dir / f"{f}.npy" for f in TEMP_FIELDS}
         if not all(p.exists() for p in paths.values()):
             return cls(None)
@@ -66,8 +79,9 @@ class Terrain:
             slope, baseline = site_slope(heights, lat, lon)
         tmin = tmax = None
         if self.temps is not None:
-            tmin = _bilinear(self.temps["tmin_k"], lat, lon)
-            tmax = _bilinear(self.temps["tmax_k"], lat, lon)
+            look = _cell_bilinear if self.cell_centred else _bilinear
+            tmin = look(self.temps["tmin_k"], lat, lon)
+            tmax = look(self.temps["tmax_k"], lat, lon)
         return TerrainSample(
             elevation, slope, tmin, tmax,
             slope_baseline_m=baseline,
@@ -84,6 +98,28 @@ def site_slope(heights, lat: float, lon: float) -> tuple[float, float]:
     dzdx = (he - hw) / (2 * b)
     dzdy = (hn - hs) / (2 * b)
     return round(float(np.degrees(np.arctan(np.hypot(dzdx, dzdy)))), 2), 2 * b
+
+
+def _cell_bilinear(grid: np.ndarray, lat: float, lon: float) -> float | None:
+    """Bilinear on a cell-centred global grid (row 0 = southernmost cells), longitude
+    wrapping. Cells without data (NaN) are skipped by weighting the valid neighbours."""
+    n_lat, n_lon = grid.shape
+    res = 180.0 / n_lat
+    y = np.clip((lat + 90.0) / res - 0.5, 0, n_lat - 1)
+    x = (lon + 180.0) / res - 0.5
+    y0 = int(min(np.floor(y), n_lat - 2))
+    x0 = int(np.floor(x))
+    fy, fx = y - y0, x - x0
+    vals, wts = [], []
+    for dy, wy in ((0, 1 - fy), (1, fy)):
+        for dx, wx in ((0, 1 - fx), (1, fx)):
+            v = grid[y0 + dy, (x0 + dx) % n_lon]
+            if np.isfinite(v) and wy * wx > 0:
+                vals.append(float(v))
+                wts.append(wy * wx)
+    if not wts:
+        return None
+    return round(float(np.dot(vals, wts) / sum(wts)), 2)
 
 
 def _bilinear(grid: np.ndarray, lat: float, lon: float) -> float | None:

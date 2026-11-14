@@ -38,6 +38,21 @@ const statusColor = (s) => (s.status === 'planned' ? '#5ee1ff' : '#ffd166');
 // ---- Stat colours: good (green) / warn (yellow) / bad (red) ------------------------
 // Tied to the evaluator's pass/fail thresholds (api/evaluator.py) and the lander's limits:
 // green = passes with margin, yellow = close to the limit, red = fails or poor.
+const realTemps = (r) => r.sources.some((s) => /Diviner/.test(s));
+
+// Daytime high vs the lander's rated limit (an estimate in landers.json; 400 K if none chosen).
+function tempRating(r, lander) {
+  const t = r.site.temp_range_k;
+  if (!t || !realTemps(r)) return { level: 'none', why: 'Not rated: no real temperature data here' };
+  const limit = lander?.max_surface_temp_k ?? 400;
+  const level = t[1] <= limit - 30 ? 'good' : t[1] <= limit ? 'warn' : 'bad';
+  return {
+    level,
+    why: `Diviner daytime high vs ${lander ? lander.name + "'s" : 'a typical'} rated ${limit} K (estimated): ` +
+      `green ≤${limit - 30} K, yellow up to ${limit} K, red above. Night lows near ${t[0].toFixed(0)} K need heaters/survival mode.`,
+  };
+}
+
 function rateStats(site, r) {
   const s = r.site;
   const lander = state.landers.find((l) => l.id === site.lander);
@@ -71,7 +86,7 @@ function rateStats(site, r) {
     },
     sun_m2: { level: band(peakSun, 500, 150), why: 'Peak sunlight on a flat panel: green ≥500 W/m² (Sun ≥~22°), yellow 150–500 (~6–22°), red <150 W/m²' },
     elevation: { level: 'none', why: 'Not rated: elevation alone is neither good nor bad' },
-    temperature: { level: 'none', why: 'Not rated: temperature is still placeholder data' },
+    temperature: tempRating(r, lander),
   };
 }
 
@@ -727,7 +742,7 @@ function render() {
     earthTile,
     ['Slope', fmt(s.slope_deg, 1, '°'), s.slope_baseline_m ? `<div class="sub">over ${s.slope_baseline_m.toFixed(0)} m</div>` : '', rating.slope],
     ['Elevation', fmt(s.elevation_m, 0, ' m'), '', rating.elevation],
-    ['Temperature', temp, '<div class="sub">placeholder</div>', rating.temperature],
+    ['Temperature', temp, `<div class="sub">${realTemps(r) ? 'night low – day high (Diviner)' : 'placeholder'}</div>`, rating.temperature],
     ['Peak sunlight on panel', fmt(peakSun, 0, ' W/m²'), '<div class="sub">flat panel, per m²</div>', rating.sun_m2],
   ];
   $('site-tiles').innerHTML = tiles
@@ -832,6 +847,8 @@ function renderCompareList() {
     ['Peak sun on panel', (c) => cell(c, c.r ? fmt(Math.max(...c.r.power_w.map((p) => p.w_m2)), 0, ' W/m²') : '', c.rt?.sun_m2)],
     ['Slope', (c) => cell(c, fmt(c.r?.site.slope_deg, 1, '°'), c.rt?.slope)],
     ['Elevation', (c) => cell(c, fmt(c.r?.site.elevation_m, 0, ' m'))],
+    ['Temperature', (c) => cell(c, c.r?.site.temp_range_k
+      ? `${c.r.site.temp_range_k[0].toFixed(0)}–${c.r.site.temp_range_k[1].toFixed(0)} K` : '—', c.rt?.temperature)],
     ['Lander', (c) => cell(c, esc(state.landers.find((l) => l.id === c.s.lander)?.name ?? '—'))],
     ['Landing', (c) => cell(c, c.s.landingDate ? `${c.s.landingDate}<br>${c.s.landingTime ?? '00:00'} UTC` : '—')],
     ['Terrain', (c) => cell(c, c.r?.terrain.level === 'detailed' ? 'detailed ~30 m' : `global ~${c.r?.terrain.resolution_m.toFixed(0)} m`)],

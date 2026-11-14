@@ -31,7 +31,9 @@ DATA = ROOT / "api" / "data"
 LANDERS: list[dict] = json.loads((DATA / "landers.json").read_text(encoding="utf-8"))
 LANDERS_BY_ID = {lander["id"]: lander for lander in LANDERS}
 SITES: list[dict] = json.loads((DATA / "sites.json").read_text(encoding="utf-8"))
-TERRAIN = Terrain.load(ROOT / "data")           # temperature grids (placeholder)
+# Surface temperature: real Diviner grids (scripts/fetch_diviner.py) if present,
+# else the labelled placeholder grids in data/ (scripts/build_grids.py).
+TERRAIN = Terrain.load(ROOT / "data", big_data_dir() / "diviner_tbol_minmax.npz")
 
 # EPHEMERIS=analytic forces the offline model (tests, or a demo with no internet).
 EPHEMERIS_MODE = os.environ.get("EPHEMERIS", "horizons").lower()
