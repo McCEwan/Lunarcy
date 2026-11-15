@@ -196,6 +196,16 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the opening animation was only checked at desktop size; on phones the panel covers the lower half of the screen.
 
+### 2026-11-15 · Session 10: pitch deck (branch `docs/pitch-deck`)
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill (pptxgenjs)
+- **Prompted with:** a maximum 7-slide PowerPoint that tells the story of a scientist looking for signs of water on the Moon and why water matters.
+- **What the AI did:** read the README and architecture doc, ran the app offline (`EPHEMERIS=analytic`, no LOLA/Diviner data downloaded) to take screenshots, and built `Lunarcy_pitch.pptx`: 7 slides around a fictional persona (Dr. Amara Rao), with speaker notes. Also sketched (no code) a design for solar-panel/comms-hub placement, a drivable route and the nearest ice.
+- **Checks the AI ran on its own output:** the deck passes the skill's file validator; every slide was rendered to an image and checked for overflow and overlap.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the screenshots came from a run on PLACEHOLDER terrain and approximate ephemeris; slide 7's results screenshot should be retaken with real data. "~10 s" comes from the README; "weeks → minutes" is a storytelling claim, not measured. Science facts (below −200 °C in shadowed craters, uses of water) are general knowledge and were not cited on the slides.
+
 ---
 
 ## Entry template
