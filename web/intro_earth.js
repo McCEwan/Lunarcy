@@ -13,7 +13,7 @@ export function startIntroEarth(container) {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
-  camera.position.set(0, 0, 4.4);
+  camera.position.set(0, 0, 4.3);
 
   const loader = new THREE.TextureLoader();
   const load = (f) => {

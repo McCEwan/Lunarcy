@@ -368,7 +368,53 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** none new.
 
-### 2026-11-15 · Session 23: pitch deck (branch `docs/pitch-deck`)
+### 2026-11-15 · Session 23: learning features in explore mode
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** keep only one "expand" control on the charts; suggest more learning features for explore mode; then "Build 1–3" (guided tour, equator vs pole, lunar-day time-lapse), with "push first".
+- **What the AI did:** removed the dashed pop-out bar; pushed the previous work to GitHub (`a990226`). Added `GET /sky/subpoints/series` (one Horizons query for a month of sub-solar/sub-Earth points) with a test. Frontend: a "Learn by exploring" box on the globe and buttons in the Learn tab. (1) A 7-stop guided tour with a frosted card (stop count, text, a "Look:" hint, back/next/end), flying the globe, opening each site with a beacon and switching to a month-long period. (2) Equator vs pole: Apollo 11 and the Shackleton rim evaluated for the same month, side-by-side sky panels, computed facts and a written comparison, both added to Compare. (3) A lunar-month time-lapse of the globe's real-Sun lighting (6-hour steps, ~10 fps, slider, pause, back to now), with darker fill light so day and night are visible.
+- **Checks the AI ran on its own output:** pytest gives 96 passed, 3 skipped. In the browser at full resolution: tour stop 2 opened Apollo 11 (Sun max 87.8°, Earth 100 %) with the beacon; Equator vs pole gave equator 51 % sun / 100 % Earth / 87.8° / 14.2-day night against pole 86 % / 39 % / 2.0° / 26 h longest night, with both panels drawn and Compare (2); the time-lapse advanced frames (40 → 49 in 1 s, light direction changing). A screenshot showed the terminator washed out by the everyday fill light, fixed with lower fill during the time-lapse. No console errors.
+- **Follow-up:** the user reported the tour card overlapping the colour legend; the legend now fades out while the tour runs (`body.touring`) and returns when it ends (checked: opacity 0 during, 1 after; screenshot clean).
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** tour texts are written by the AI from standard lunar facts (29.5-day synodic month, 1.5° tilt, ~7° libration, Chang'e 4/Queqiao, Shackleton's LOLA brightness and Diviner temperature from this app's own data); all 7 stops were clicked through in the browser and their tiles match the lessons (Apollo 11 51 % sun / 100 % Earth; Shackleton rim 86 % / 39 %; Shackleton floor 0 % sun; Chang'e 4 0 % Earth; Mare Smythii 62 % Earth).
+
+### 2026-11-15 · Session 24: tilted 3D close-ups in the guided tour
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** "in the guided tour is it possible to have it zoom in with a 3d tilt for the tour only?" (plus pushing the earlier work first, and hiding the legend during the tour, earlier this session).
+- **What the AI did:** `tiltTo(lat, lng, {dist, tiltDeg, heading})` flies the camera to a point above and behind each tour site (55–62° from vertical, 0.3–0.5 Moon radii out, a per-stop heading) and aims it at the site, with the site's local "up" as screen-up. `resetTilt()` steps back off the surface, re-aims at the centre and re-enables the controls; it runs before any normal fly-to (`newSite`, `flyTo`, time-lapse) and when the tour ends. `newSite` gained `fly: false` so the tour's own camera move isn't overridden.
+- **Checks the AI ran on its own output:** the first approach (moving the orbit controls' target to the site) failed: the target snapped back to the centre every frame. The AI checked animation frames (running at 20/s), the controls' target-radius clamp (`maxTargetRadius` null; lifting it did not help) and traps on the target's setters and methods (the reset stopped whenever instrumented, so the cause was not pinned down). It switched to disabling the controls during the tour and driving the camera directly. Result: aim error 0.00° at Apollo 11, camera 0.35 radii up; screenshots show oblique views with the curved horizon (Apollo 11, Shackleton rim). Ending the tour restored the controls (enabled, target at the centre, up = +y, altitude 2.4). No console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the globe can't be dragged during a tour stop (controls are off until the tour ends). Close to the poles the globe texture is stretched (an equirectangular image), which is visible in the tilted polar views. The exact cause of the target reset was not identified.
+
+### 2026-11-15 · Session 25: beacons removed; tour and Learn tab only in Explore mode
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** "remove the beacons. make the tour exclusive to the educator mode. make the learn tab exclusive to the educator mode." The AI built a new third "Teach & learn (educator mode)" option; the user then clarified "I MEANT EXPLORER NOT EDUCATOR".
+- **What the AI did:** removed the hover beacon's beam (points layer) and name tag (html layer); hovering still whitens and enlarges a site's label. Removed the briefly added educator mode and made the guided tour and the Learn tab Explore-only (`setMode`, `body.mode-explore`, `.explore-only`); switching to mission planning ends any tour and leaves the Learn tab. The start screen is back to two cards (the Explore card now mentions the tour and lessons), and a "change mode" link sits under the panel title.
+- **Checks the AI ran on its own output:** in the browser: no beacon points or tags after hovering Apollo 11, and its label turned white. Start screen shows "Explore the Moon" and "Plan a mission". Explore mode: Learn tab and tour button visible, tour opens. After "change mode" → Plan a mission: Learn tab and tour button hidden, tour closed; Equator vs pole still available. No console errors.
+- **What a human checked:** _[fill in]_
+- **Follow-up:** the user asked to keep the whole "Learn by exploring" box in Explore mode only. It is now `.explore-only`; leaving Explore also closes Equator vs pole and resets the time-lapse to the real Sun now. Checked: box visible in Explore, hidden in planning; a playing time-lapse stopped and the normal lighting returned (ambient 1.8).
+- **Second follow-up:** the start-screen cards now say who each mode is for: "For hobbyists and students" under Explore the Moon, "For enthusiasts and professionals" under Plan a mission (small Cinzel capitals); checked in a screenshot.
+- **Third follow-up:** in the Site tab, "Open 3D view" and "Add to comparison" moved to the top (under the site name) and "Why this site was recommended" moved to the bottom; checked the element order and a screenshot.
+- **Still unverified / known limits:** none new.
+
+### 2026-11-15 · Session 26: a distant Earth and a Moon that spins in place
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** on the title screen the Earth looked small and close to the Moon instead of far away; the stars showed parallax, as if orbiting the Moon rather than watching it spin.
+- **What the AI did:** the opening screens no longer use the orbit controls' auto-rotate (which moved the camera, so the starfield swept past a fixed Earth). The globe object itself now turns (`startSpin`, about 4 minutes per turn) under a still camera, so stars and Earth stay put. On reveal, `stopSpin` sets the rotation back to 0 and shifts the camera longitude by the same angle. The Earth was shrunk from ~30 % of the screen height to about 5.5 % (true size from the Moon is ~2°, about 4 % of this view; slightly enlarged so the continents read) and moved further from the Moon.
+- **Checks the AI ran on its own output:** the camera position was unchanged across 2 s of the title screen; the globe's rotation advanced (0.5 → 0.505 over two frames); the Earth measured 42 px on a 768 px screen; a screenshot showed the small distant Earth beside the Moon and title. The hand-off was tested in isolation at three angles (0.4, −0.7, 2.0 rad): two test points landed on the same pixels before and after. pytest gives 96 passed, 3 skipped. No console errors.
+- **What a human checked:** _[fill in]_
+- **Follow-up:** at the user's request the Earth was made bigger for artistic effect: 14 % of the screen height (min 70 px), about 3.5× its true apparent size, still fixed (no parallax); checked in a screenshot.
+- **Second follow-up (title wipe):** the title is now wiped left to right in step with the shadow leaving the Moon (a soft-edged CSS mask driven by the same clock: lit share of the disc = (1 + cos θ)/2, normalised to fully revealed at the end), while still un-blurring. The AI's first version had the sign wrong ((1 − cos θ)/2), so the title was fully revealed almost at once; found by freezing the reveal halfway with a temporary hook (blur 6 px but wipe 112 %), fixed, and the hook removed. A screenshot sequence now shows: dark Moon / crescent with "LU" / mostly lit with "LUNARC" / full title. (In the hidden browser pane the page's timers only run during screenshots, so the screenshots, not script polling, were used to check timing.)
+- **Still unverified / known limits:** the Earth's size is artistic, not to scale.
+
+### 2026-11-15 · Session 27: pitch deck (branch `docs/pitch-deck`)
 
 - **Who:** _[team member name]_
 - **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill (pptxgenjs)
@@ -378,7 +424,7 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the screenshots came from a run on PLACEHOLDER terrain and approximate ephemeris; slide 7's results screenshot should be retaken with real data. "~10 s" comes from the README; "weeks → minutes" is a storytelling claim, not measured. Science facts (below −200 °C in shadowed craters, uses of water) are general knowledge and were not cited on the slides.
 
-### 2026-11-15 · Session 24: pitch deck redesign (branch `docs/pitch-deck`)
+### 2026-11-15 · Session 28: pitch deck redesign (branch `docs/pitch-deck`)
 
 - **Who:** _[team member name]_
 - **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill (pptxgenjs), web search
@@ -389,7 +435,7 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **Follow-up (same session):** slides 3–7 reorganised into Relevance, Impact, Creativity, Validity, then Toronto/Canadian impact with the low-colour design choices; slides 1–2 unchanged.
 - **Still unverified / known limits:** "Lunarcy could help Ontario's rover teams" is a pitch claim; no rover team has been contacted. The screenshots still come from a PLACEHOLDER-terrain run.
 
-### 2026-11-15 · Session 25: slide titles and real-data screenshots (branch `docs/pitch-deck`)
+### 2026-11-15 · Session 29: slide titles and real-data screenshots (branch `docs/pitch-deck`)
 
 - **Who:** _[team member name]_
 - **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill, Playwright
@@ -399,7 +445,7 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the challenge page (spaceappschallenge.org) could not be read from the cloud session (TLS certificate rejected by the proxy), so the Relevance slide is not yet checked against the challenge text. Slide 6 says global terrain is ~237 m (LDEM_128); the screenshots used LDEM_64 (~474 m).
 
-### 2026-11-15 · Session 26: 11-slide deck from the presentation script (branch `docs/pitch-deck`)
+### 2026-11-15 · Session 30: 11-slide deck from the presentation script (branch `docs/pitch-deck`)
 
 - **Who:** _[team member name]_
 - **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill, Playwright

@@ -438,7 +438,9 @@ body.intro-mode #left-col, body.intro-mode #legend, body.intro-mode #panel {
 /* ===== Opening screens: the Earth on the left, the Moon shifted right ===== */
 #intro-earth {
   position: fixed; z-index: 15; pointer-events: none;
-  left: 5vw; top: 50%; width: min(30vmin, 300px); aspect-ratio: 1; transform: translateY(-62%);
+  /* Seen from the Moon, Earth is about 2° across (~4 % of this view). It is drawn larger for
+     artistic effect, but stays still, far behind the Moon (no parallax). */
+  left: 14vw; top: 32%; width: max(14vmin, 70px); aspect-ratio: 1; transform: translate(-50%, -50%);
   opacity: 1; transition: opacity 1.1s ease;
 }
 #intro-earth canvas { width: 100%; height: 100%; display: block; }
@@ -449,7 +451,7 @@ body:not(.intro-mode) #intro-earth { opacity: 0; }
 body.globe-wide #globe { left: -19vw !important; right: -19vw !important; }
 body.intro-mode #globe { transform: translateX(19vw); }
 @media (max-width: 760px) {
-  #intro-earth { left: 4vw; top: 16%; width: 26vmin; transform: none; }
+  #intro-earth { left: 16vw; top: 15%; width: max(16vmin, 56px); }
 }
 
 /* ===== 3D view: site plan panel (solar array, comms hub, routes, ice) ===== */
@@ -594,17 +596,9 @@ details.insight label { font-size: 11px; }
 .learn-card { margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .08); }
 .learn-card h3 { margin: 0 0 4px; font-family: var(--display); font-size: 14px; letter-spacing: .04em; }
 .learn-card p { margin: 0; font-size: 12.5px; line-height: 1.55; color: #d8d8d8; }
-#choice-learn { display: block; margin: 18px auto 0; color: #e8e8e8; font-family: var(--display-sub); font-size: 17px; }
 #share-btn { display: block; margin: 8px 0 0; text-align: left; padding: 0; color: #e8e8e8; }
 .tabs .tab { padding-left: 6px; padding-right: 6px; }
 
-/* ===== Hover beacon name tag (globe) ===== */
-.beacon-tag {
-  transform: translate(-50%, -100%); pointer-events: none; white-space: nowrap;
-  padding: 3px 9px; border-radius: 10px; font-size: 12px; color: #fff;
-  background: rgba(10, 10, 10, .6); border: 1px solid rgba(255, 255, 255, .55);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 0 14px rgba(255, 255, 255, .25);
-}
 /* ===== Why this site was recommended ===== */
 .why-box p { margin: 6px 0 4px; font-size: 12.5px; }
 .why-box ul { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.5; color: #d8d8d8; }
@@ -635,7 +629,6 @@ details.insight label { font-size: 11px; }
 .sky-svg.pano { cursor: zoom-in; }
 .sky-panel.large .sky-svg.pano { cursor: default; }
 .sky-svg.pano { overflow: hidden; }   /* paths below the panorama's range stay inside it */
-.beacon-tag.behind::after { content: " · behind the Moon"; color: #bdbdbd; font-size: 11px; }
 
 /* ===== Search results: header row, "Why this site?" link ===== */
 .region-list li .r-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -664,3 +657,62 @@ details.insight label { font-size: 11px; }
   background: transparent; color: #f2f2f2; border: 1px dashed rgba(255, 255, 255, .4); border-radius: 8px;
 }
 .expand-line:hover { background: rgba(255, 255, 255, .08); border-style: solid; }
+
+/* ===== Learning in explore mode ===== */
+.learn-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.learn-tools .chip { margin: 0; }
+.learn-tab-tools { margin: 10px 0 4px; }
+#learnbox { margin-top: 8px; width: min(300px, calc(100vw - var(--panel-w) - 24px)); }
+#learnbox .timelapse { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#tl-slider { flex: 1 1 100%; margin: 2px 0 0; padding: 0; accent-color: #f2f2f2; }
+#tl-date { flex-basis: 100%; line-height: 1.45; }
+body.intro-mode #learnbox { opacity: 0; pointer-events: none; }
+
+#tour {
+  position: fixed; z-index: 30; bottom: 20px; left: calc((100% - var(--panel-w)) / 2); transform: translateX(-50%);
+  width: min(460px, calc(100vw - var(--panel-w) - 32px)); padding: 14px 16px 12px;
+  background: rgba(12, 12, 12, .72); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, .16); border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
+}
+#tour[hidden] { display: none; }
+#tour .tour-step { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+#tour .tour-title { margin: 4px 0 6px; font-family: var(--display); font-size: 19px; letter-spacing: .04em; }
+#tour .tour-text { margin: 0 0 8px; font-size: 13.5px; line-height: 1.55; }
+#tour .tour-look { margin: 0 0 10px; font-size: 12.5px; color: #d6d6d6; padding: 6px 9px; border-left: 2px solid #ff2bd6; background: rgba(255, 255, 255, .04); }
+#tour .tour-nav { display: flex; gap: 6px; }
+#tour .tour-nav .chip { margin: 0; }
+#tour #tour-exit { margin-left: auto; }
+@media (max-width: 700px) {
+  #tour { top: 12px; bottom: auto; left: 50%; width: calc(100vw - 24px); }
+}
+
+#versus-modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .55); }
+#versus-modal[hidden] { display: none; }
+.versus-summary { margin: 4px 0 10px; line-height: 1.55; color: #e2e2e2; }
+.versus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.versus-col { min-width: 0; padding: 10px 12px; border-radius: 10px; background: rgba(255, 255, 255, .035); border: 1px solid rgba(255, 255, 255, .08); }
+.versus-name { margin: 0 0 4px; font-family: var(--display); font-size: 16px; letter-spacing: .04em; }
+.versus-facts { font-size: 12.5px; line-height: 1.6; color: #d8d8d8; }
+@media (max-width: 800px) { .versus-grid { grid-template-columns: 1fr; } }
+
+/* The tour card and the colour legend share the bottom of the screen: hide the legend during the tour */
+#legend { transition: opacity .3s ease; }
+body.touring #legend { opacity: 0; pointer-events: none; }
+
+/* ===== Modes: Explore-only items (guided tour, Learn tab) ===== */
+body:not(.mode-explore) .explore-only { display: none !important; }
+.mode-line { margin: -2px 0 6px; }
+.mode-line .linklike { display: inline; width: auto; margin: 0; padding: 0; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; color: #e8e8e8; }
+
+/* Start screen: who each mode is for */
+.choice-card .choice-for {
+  font-family: var(--display); font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase;
+  color: #e6e6e6; opacity: .85; margin-top: -2px;
+}
+
+/* Title wipe, in step with the shadow sweeping off the Moon (--wipe is set by the reveal) */
+.intro-title {
+  --wipe: -12%;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(var(--wipe) - 10%), transparent calc(var(--wipe) + 10%));
+          mask-image: linear-gradient(90deg, #000 calc(var(--wipe) - 10%), transparent calc(var(--wipe) + 10%));
+}
