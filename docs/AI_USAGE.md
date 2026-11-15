@@ -206,6 +206,16 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the screenshots came from a run on PLACEHOLDER terrain and approximate ephemeris; slide 7's results screenshot should be retaken with real data. "~10 s" comes from the README; "weeks → minutes" is a storytelling claim, not measured. Science facts (below −200 °C in shadowed craters, uses of water) are general knowledge and were not cited on the slides.
 
+### 2026-11-15 · Session 11: pitch deck redesign (branch `docs/pitch-deck`)
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill (pptxgenjs), web search
+- **Prompted with:** a black, white and sun-orange colour scheme, and slides that cover impact, creativity, relevance to the NASA challenge, validity of the data and our shortcomings, Toronto/Canadian impact (the Canadian lunar utility rover), prompts that lead the judges to questions, and the art and design choices.
+- **What the AI did:** rebuilt `Lunarcy_pitch.pptx` as 7 slides with the new palette, an "Ask us" prompt on each content slide, a real-vs-shortcomings slide, an impact slide on CSA's Lunar Utility Vehicle, and a design-and-questions closing slide, with speaker notes.
+- **Checks the AI ran on its own output:** file validator passes; every slide rendered and checked for overflow. The rover facts were checked by web search (CSA news release, July 2025: studies awarded to Canadensys Aerospace, MDA Space with the U of T Institute for Aerospace Studies, and Mission Control).
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** "Lunarcy could help Ontario's rover teams" is a pitch claim; no rover team has been contacted. The screenshots still come from a PLACEHOLDER-terrain run.
+
 ---
 
 ## Entry template
