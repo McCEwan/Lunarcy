@@ -164,6 +164,13 @@ const globe = new Globe(globeEl)
 
 window.__globe = globe;   // handy for debugging in the browser console
 const [ambientLight, sunLight] = globe.lights();
+// The Moon's regolith is matte: no specular highlight (globe.gl's default Phong material is shiny).
+{
+  const m = globe.globeMaterial();
+  m.specular?.set?.(0x000000);
+  m.shininess = 0;
+  m.needsUpdate = true;
+}
 const defaultLighting = { ambient: ambientLight.intensity, sun: sunLight.intensity, parent: null };
 
 function skyMarker(d) {

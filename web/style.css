@@ -389,7 +389,6 @@ body.intro-mode #left-col, body.intro-mode #legend, body.intro-mode #panel {
 }
 .choice-card b { font-size: 19px; font-weight: 600; color: #fff; }
 .choice-card span:last-child { color: var(--muted); }
-.choice-icon { font-size: 34px; line-height: 1; }
 .choice-card:hover, .choice-card:focus-visible {
   border-color: var(--accent); background: rgba(30, 30, 30, .85); transform: translateY(-2px); outline: none;
 }

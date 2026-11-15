@@ -22,8 +22,8 @@ export function startIntroEarth(container) {
     t.anisotropy = 8;
     return t;
   };
-  // Sunlight from the right and slightly in front, like the light that is reaching the Moon.
-  const sunDir = new THREE.Vector3(1, 0.25, 0.55).normalize();
+  // Sunlight from over the viewer's shoulder, so the side facing the camera is lit (a gibbous Earth).
+  const sunDir = new THREE.Vector3(0.25, 0.15, 1).normalize();
   const earthMat = new THREE.ShaderMaterial({
     uniforms: { day: { value: load('earth-blue-marble.jpg') }, night: { value: load('earth-night.jpg') }, sunDir: { value: sunDir } },
     vertexShader: `
@@ -42,6 +42,7 @@ export function startIntroEarth(container) {
         vec3 d = texture2D(day, vUv).rgb * (0.25 + 1.05 * max(l, 0.0));
         vec3 n = texture2D(night, vUv).rgb * 1.3;
         gl_FragColor = vec4(mix(n, d, dayMix), 1.0);
+        #include <colorspace_fragment>
       }`,
   });
   const earth = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), earthMat);

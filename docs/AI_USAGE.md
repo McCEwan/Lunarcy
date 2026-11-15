@@ -290,6 +290,17 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the 20 m "realistic" tower is an estimate, not a spec. The LUNARSABER reference (~100 m, scalable to ~200 m) was checked against press coverage (Space.com, Universe Today), not a primary Honeybee or DARPA document. The monochrome theme was not reviewed at full resolution (the pane was hidden).
 
+### 2026-11-15 · Session 17: start screen without emojis, matte Moon, front-lit Earth
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** remove the emojis on the start screen; make the Moon less reflective in the opening (it's matte in reality); light the Earth from the camera side instead of from behind.
+- **What the AI did:** removed the two emoji icons from the start-screen buttons. Set globe.gl's Moon material (MeshPhongMaterial) to no specular highlight (`specular` black, `shininess` 0); this applies everywhere, not just the intro. Moved the intro Earth's sunlight to over the viewer's shoulder, so the side facing the camera is lit.
+- **Checks the AI ran on its own output:** in the browser the material read back as `shininess` 0 and specular `000000`; an intro screenshot showed a matte Moon with no highlight and the Earth's lit face toward the viewer; the start screen text had no emoji; no console errors.
+- **What a human checked:** _[fill in]_
+- **Follow-up:** the user reported the Earth still looked unlit. The cause was the custom Earth shader skipping three.js's output colour conversion (`#include <colorspace_fragment>`), so the sRGB textures rendered far too dark. Added it and centred the light on the camera side; a screenshot then showed a fully lit day side.
+- **Still unverified / known limits:** checked in browser screenshots only.
+
 ---
 
 ## Entry template
