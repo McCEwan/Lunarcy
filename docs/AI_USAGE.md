@@ -214,6 +214,7 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What the AI did:** rebuilt `Lunarcy_pitch.pptx` as 7 slides with the new palette, an "Ask us" prompt on each content slide, a real-vs-shortcomings slide, an impact slide on CSA's Lunar Utility Vehicle, and a design-and-questions closing slide, with speaker notes.
 - **Checks the AI ran on its own output:** file validator passes; every slide rendered and checked for overflow. The rover facts were checked by web search (CSA news release, July 2025: studies awarded to Canadensys Aerospace, MDA Space with the U of T Institute for Aerospace Studies, and Mission Control).
 - **What a human checked:** _[fill in]_
+- **Follow-up (same session):** slides 3–7 reorganised into Relevance, Impact, Creativity, Validity, then Toronto/Canadian impact with the low-colour design choices; slides 1–2 unchanged.
 - **Still unverified / known limits:** "Lunarcy could help Ontario's rover teams" is a pitch claim; no rover team has been contacted. The screenshots still come from a PLACEHOLDER-terrain run.
 
 ---
