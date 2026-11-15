@@ -438,7 +438,9 @@ body.intro-mode #left-col, body.intro-mode #legend, body.intro-mode #panel {
 /* ===== Opening screens: the Earth on the left, the Moon shifted right ===== */
 #intro-earth {
   position: fixed; z-index: 15; pointer-events: none;
-  left: 5vw; top: 50%; width: min(30vmin, 300px); aspect-ratio: 1; transform: translateY(-62%);
+  /* Seen from the Moon, Earth is about 2° across (~4 % of this view). It is drawn larger for
+     artistic effect, but stays still, far behind the Moon (no parallax). */
+  left: 14vw; top: 32%; width: max(14vmin, 70px); aspect-ratio: 1; transform: translate(-50%, -50%);
   opacity: 1; transition: opacity 1.1s ease;
 }
 #intro-earth canvas { width: 100%; height: 100%; display: block; }
@@ -449,7 +451,7 @@ body:not(.intro-mode) #intro-earth { opacity: 0; }
 body.globe-wide #globe { left: -19vw !important; right: -19vw !important; }
 body.intro-mode #globe { transform: translateX(19vw); }
 @media (max-width: 760px) {
-  #intro-earth { left: 4vw; top: 16%; width: 26vmin; transform: none; }
+  #intro-earth { left: 16vw; top: 15%; width: max(16vmin, 56px); }
 }
 
 /* ===== 3D view: site plan panel (solar array, comms hub, routes, ice) ===== */
@@ -706,4 +708,11 @@ body:not(.mode-explore) .explore-only { display: none !important; }
 .choice-card .choice-for {
   font-family: var(--display); font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase;
   color: #e6e6e6; opacity: .85; margin-top: -2px;
+}
+
+/* Title wipe, in step with the shadow sweeping off the Moon (--wipe is set by the reveal) */
+.intro-title {
+  --wipe: -12%;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(var(--wipe) - 10%), transparent calc(var(--wipe) + 10%));
+          mask-image: linear-gradient(90deg, #000 calc(var(--wipe) - 10%), transparent calc(var(--wipe) + 10%));
 }

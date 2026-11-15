@@ -597,7 +597,13 @@ function startShadowReveal() {
     const e = f < 0.5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;      // ease in-out
     const theta = ((180 - 158 * e) * Math.PI) / 180;    // angle between viewer and light, seen from the Moon
     ambientLight.intensity = 0.06 * e;                   // faint earthshine fills in as it lights up
-    title.style.opacity = String(e);
+    // The light comes from screen-left, so the terminator crosses the Moon left to right: the lit
+    // part spans fraction (1 + cos θ)/2 of the disc from its left edge (0 at θ = 180°, 0.96 at the
+    // final 22°). The title is wiped left to right by the same fraction (normalised so it's fully
+    // revealed when the sweep ends), and still un-blurs.
+    const frac = (1 + Math.cos(theta)) / 2 / ((1 + Math.cos((22 * Math.PI) / 180)) / 2);
+    title.style.setProperty('--wipe', `${(-12 + 124 * Math.min(1, frac)).toFixed(1)}%`);
+    title.style.opacity = String(Math.min(1, 0.25 + e));
     title.style.filter = `blur(${(12 * (1 - e)).toFixed(2)}px)`;
     const cam = globe.camera().position;
     const len = Math.hypot(cam.x, cam.y, cam.z) || 1;
@@ -619,13 +625,40 @@ function endShadowReveal() {
   applyGlobeSky();
 }
 
+// Opening screens: the Moon turns in place under a still camera, so the stars and the distant
+// Earth stay fixed like a real background (no parallax). On reveal the spin is folded into the
+// camera's longitude and the globe is put back to its normal orientation.
+const SPIN_RAD_PER_S = 0.026;          // one turn in about 4 minutes
+const spin = { raf: 0, last: 0 };
+const globeObj = () => globe.scene().children.find((o) => typeof o.getCoords === 'function');
+function startSpin() {
+  spin.last = performance.now();
+  const step = (now) => {
+    const g = globeObj();
+    if (g) g.rotation.y += SPIN_RAD_PER_S * Math.min(0.1, (now - spin.last) / 1000);
+    spin.last = now;
+    spin.raf = requestAnimationFrame(step);
+  };
+  spin.raf = requestAnimationFrame(step);
+}
+function stopSpin() {
+  cancelAnimationFrame(spin.raf);
+  const g = globeObj();
+  if (!g || !g.rotation.y) return;
+  // Turning the globe by +θ about its axis shows longitudes θ further west at the same screen spot.
+  const pov = globe.pointOfView();
+  const deg = (g.rotation.y * 180) / Math.PI;
+  g.rotation.y = 0;
+  globe.pointOfView({ lat: pov.lat, lng: ((pov.lng - deg) % 360 + 540) % 360 - 180, altitude: pov.altitude }, 0);
+}
+
 function startIntro() {
   try { state.stopEarth = startIntroEarth($('intro-earth')); } catch (err) { console.warn('Intro Earth unavailable', err); }
   startShadowReveal();
   document.body.classList.add('intro-mode');
   globe.pointOfView(CLOSE_VIEW, 0);
-  globe.controls().autoRotate = true;
-  globe.controls().autoRotateSpeed = 0.25;
+  globe.controls().autoRotate = false;
+  startSpin();
   $('intro').hidden = false;
   $('intro').focus();
 }
@@ -685,6 +718,7 @@ function revealApp() {
   setTimeout(() => { state.stopEarth?.(); state.stopEarth = null; }, 1300);   // after the Earth fades out
   setTimeout(() => { document.body.classList.remove('globe-wide'); resizeGlobe(); }, 1700);  // after the slide back
   globe.controls().autoRotate = false;
+  stopSpin();
   const pov = globe.pointOfView();
   globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: FULL_VIEW_ALTITUDE }, 1600);
   document.body.classList.remove('intro-mode');   // menus fade in (CSS, 1 s)

@@ -402,6 +402,18 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **Third follow-up:** in the Site tab, "Open 3D view" and "Add to comparison" moved to the top (under the site name) and "Why this site was recommended" moved to the bottom; checked the element order and a screenshot.
 - **Still unverified / known limits:** none new.
 
+### 2026-11-15 · Session 26: a distant Earth and a Moon that spins in place
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** on the title screen the Earth looked small and close to the Moon instead of far away; the stars showed parallax, as if orbiting the Moon rather than watching it spin.
+- **What the AI did:** the opening screens no longer use the orbit controls' auto-rotate (which moved the camera, so the starfield swept past a fixed Earth). The globe object itself now turns (`startSpin`, about 4 minutes per turn) under a still camera, so stars and Earth stay put. On reveal, `stopSpin` sets the rotation back to 0 and shifts the camera longitude by the same angle. The Earth was shrunk from ~30 % of the screen height to about 5.5 % (true size from the Moon is ~2°, about 4 % of this view; slightly enlarged so the continents read) and moved further from the Moon.
+- **Checks the AI ran on its own output:** the camera position was unchanged across 2 s of the title screen; the globe's rotation advanced (0.5 → 0.505 over two frames); the Earth measured 42 px on a 768 px screen; a screenshot showed the small distant Earth beside the Moon and title. The hand-off was tested in isolation at three angles (0.4, −0.7, 2.0 rad): two test points landed on the same pixels before and after. pytest gives 96 passed, 3 skipped. No console errors.
+- **What a human checked:** _[fill in]_
+- **Follow-up:** at the user's request the Earth was made bigger for artistic effect: 14 % of the screen height (min 70 px), about 3.5× its true apparent size, still fixed (no parallax); checked in a screenshot.
+- **Second follow-up (title wipe):** the title is now wiped left to right in step with the shadow leaving the Moon (a soft-edged CSS mask driven by the same clock: lit share of the disc = (1 + cos θ)/2, normalised to fully revealed at the end), while still un-blurring. The AI's first version had the sign wrong ((1 − cos θ)/2), so the title was fully revealed almost at once; found by freezing the reveal halfway with a temporary hook (blur 6 px but wipe 112 %), fixed, and the hook removed. A screenshot sequence now shows: dark Moon / crescent with "LU" / mostly lit with "LUNARC" / full title. (In the hidden browser pane the page's timers only run during screenshots, so the screenshots, not script polling, were used to check timing.)
+- **Still unverified / known limits:** the Earth's size is artistic, not to scale.
+
 ---
 
 ## Entry template
