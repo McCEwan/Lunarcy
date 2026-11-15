@@ -316,6 +316,16 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the temperature fill (gentleness of the day–night swing out of 400 °C) and the slope fill (empty at 20°) are design choices, not standards. The pole markers and tooltips were not judged at full resolution (the browser pane was hidden).
 
+### 2026-11-15 · Session 19: home-plate pole badges
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** drop the "North Pole"/"South Pole" labels and keep N and S, in an icon pointing to the pole, shaped like home plate.
+- **What the AI did:** replaced the round markers with a pentagon (home plate) badge: a white edge and a dark frosted fill (two clip-path layers), the Cinzel letter inside, and the point toward the pole (down for N, up for S). Removed the text labels; the full name is kept as a hover title.
+- **Checks the AI ran on its own output:** measured in the browser against `globe.getScreenCoords`. The first version's tip was 11 px off, because globe.gl's inline transform overrides a marker's own transform; the offset now sits on the inner badge, and both tips line up with the poles (x exact, y within 5 px, the marker's small lift). No console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the shape was checked by measurement, not seen at full resolution (the browser pane was hidden).
+
 ---
 
 ## Entry template

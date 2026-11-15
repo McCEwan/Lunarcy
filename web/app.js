@@ -183,10 +183,11 @@ const [ambientLight, sunLight] = globe.lights();
 }
 const defaultLighting = { ambient: ambientLight.intensity, sun: sunLight.intensity, parent: null };
 
-// North and south pole markers: Cinzel letters on a thin stem, floating just above each pole.
+// North and south pole markers: a Cinzel letter in a home-plate-shaped badge whose point
+// touches the pole (the badge sits above the North Pole and below the South Pole on screen).
 const POLE_MARKERS = [
-  { kind: 'pole', pole: 'N', name: 'North Pole', lat: 90, lng: 0, alt: 0.1 },
-  { kind: 'pole', pole: 'S', name: 'South Pole', lat: -90, lng: 0, alt: 0.1 },
+  { kind: 'pole', pole: 'N', name: 'North Pole', lat: 90, lng: 0, alt: 0.02 },
+  { kind: 'pole', pole: 'S', name: 'South Pole', lat: -90, lng: 0, alt: 0.02 },
 ];
 const poleData = () => (state.revealed ? POLE_MARKERS : []);
 
@@ -194,7 +195,8 @@ function skyMarker(d) {
   if (d.kind === 'pole') {
     const el = document.createElement('div');
     el.className = `pole-marker ${d.pole === 'N' ? 'north' : 'south'}`;
-    el.innerHTML = `<span class="pole-letter">${d.pole}</span><span class="pole-name">${d.name}</span>`;
+    el.title = d.name;
+    el.innerHTML = `<span class="pole-badge"><span class="pole-letter">${d.pole}</span></span>`;
     return el;
   }
   const el = document.createElement('div');
