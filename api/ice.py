@@ -207,10 +207,10 @@ class IceMap:
         if crater and crater.get("evidence"):
             basis = f"Published ice evidence in {crater['name']}: {crater['evidence']['summary']} ({crater['evidence']['citation']})"
         elif crater:
-            basis = (f"{crater['name']} floor: permanently shadowed (LOLA) and ≤{ICE_STABLE_K:.0f} K (Diviner); "
+            basis = (f"{crater['name']} floor: permanently shadowed (LOLA) and ≤{ICE_STABLE_K - 273.15:.0f} °C (Diviner); "
                      "ice could survive here, not a detection")
         else:
-            basis = (f"Cold-trap cell: permanently shadowed (LOLA) and ≤{ICE_STABLE_K:.0f} K (Diviner); "
+            basis = (f"Cold-trap cell: permanently shadowed (LOLA) and ≤{ICE_STABLE_K - 273.15:.0f} °C (Diviner); "
                      "ice could survive here, not a detection")
         return {"lat": round(tlat, 4), "lon": round(tlon, 4), "distance_km": round(float(d[i]), 2),
                 "name": crater["name"] if crater else None,
@@ -229,7 +229,7 @@ class IceMap:
     def sources(self) -> list[str]:
         out = [self.crater_source, f"Crater depth and floor shadow from {self.heights_source}"]
         if self.temp_source:
-            out.append(f"Cold traps (max ≤{ICE_STABLE_K:.0f} K) from {self.temp_source}")
+            out.append(f"Cold traps (max ≤{ICE_STABLE_K - 273.15:.0f} °C) from {self.temp_source}")
         if self.skyline_source:
             out.append(f"Permanent shadow from {self.skyline_source}")
         cites = sorted({c["evidence"]["citation"] for c in self.craters if c.get("evidence")})

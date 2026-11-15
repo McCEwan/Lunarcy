@@ -230,31 +230,67 @@ class SiteView {
     if (!plan) { el.innerHTML = `<h3>Site plan</h3><div class="small muted">${message}</div>`; return; }
     const km = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
     const compass = (deg) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+    const attr = (t) => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const info = (tip) => ` <span class="info-i" data-tip="${attr(tip)}" tabindex="0">i</span>`;
     const { solar, comms, route, ice, grid } = plan;
     const fromLander = (s) => (s.drive_from_lander_m ? `${km(s.drive_from_lander_m)} drive from the lander` : 'at the lander');
+    const days = plan.period ? `${plan.period.days} days from ${plan.period.start.slice(0, 10)}` : 'the period';
+    const rough = grid.rough ? ` On the ~${Math.round(grid.resolution_m)} m global terrain this is a rough estimate.` : '';
+
+    // Why each recommendation was made.
+    const pickWhy = (s, body, pct, what) =>
+      `Why here: we looked at ${s.why?.candidates ?? 'all'} spots within 5 km where the ground is no steeper than 10° ` +
+      `and a rover can drive to (ground ≤15° all the way). For each we traced the real terrain skyline (NASA LOLA, out to 150 km) as seen from the top of a ` +
+      `${s.mast_m} m mast, and counted the hours the ${body} is above it over ${days} (JPL Horizons positions). ` +
+      `This spot ${what} ${pct}% of the time` +
+      (s.why ? `, against ${s.why.lander_pct}% at the lander itself.` : '.') +
+      ` Close calls go to the shorter drive (0.3 points per km).${rough}`;
+    const solarWhy = pickWhy(solar, 'Sun', solar.sunlight_pct, 'is in sunlight');
+    const commsWhy = pickWhy(comms, 'Earth', comms.earth_pct, 'can see Earth') +
+      ' Seeing Earth means direct radio contact without a relay satellite.';
+    const routeWhy = route?.same_spot
+      ? 'The best solar and comms spots are the same place, so one mast can carry both.'
+      : route
+        ? `Why this path: it is the cheapest safe drive between the two spots. Ground steeper than 15° in any direction ` +
+          `is off-limits (NASA's VIPER rover "can generally drive on slopes up to 15°"; driving across a steeper hillside ` +
+          `risks tipping), and each step costs more the steeper it is, so gentle ground wins. The drive is ` +
+          `${km(route.drive_m)} against ${km(route.straight_m)} in a straight line; the difference is the detour around ` +
+          `steeper ground. Its steepest step is ${route.max_slope_deg}°.${rough}`
+        : 'No path connects the two spots without crossing ground steeper than 15°.';
+    const towerWhy = comms.tower
+      ? `Why these heights: a taller antenna sees over nearby rims, so we repeated the Earth count at the comms spot for ` +
+        `towers from 2 m to 500 m. Ideal = the lowest tower that gets within 1 point of the best result ` +
+        `(${comms.tower.ideal_m} m → ${comms.tower.ideal_earth_pct}%). Realistic = the best up to 20 m, our estimate of ` +
+        `what a small lander could deploy (${comms.tower.realistic_m} m → ${comms.tower.realistic_earth_pct}%). ` +
+        `${comms.tower.reference}.`
+      : '';
     let iceRow = '<div class="row k-ice">No ice candidate found</div>';
     if (ice) {
       const what = ice.name ? `<b>${ice.name}</b> (${ice.rating === 'known' ? 'published ice evidence' : 'likely cold trap'})` : '<b>a cold-trap cell</b>';
       const drive = ice.route
         ? `<br>Drive ${km(ice.route.drive_m)} to within ${km(ice.route.gap_to_ice_m)} of it (the rest is too steep at ≤15°).`
         : ice.in_view ? '<br>No drivable way in at ≤15° from here.' : '<br>Beyond the 20 km terrain patch (arrow at the edge; full line on the globe).';
-      iceRow = `<div class="row"><span class="k-ice">Nearest ice:</span> ${what}, ${km(ice.distance_m)} ${compass(ice.bearing_deg)} as the crow flies.${drive}
-        <div class="small muted">${ice.basis}</div></div>`;
+      const iceWhy = `Why this target: water ice can last only where the surface never gets warmer than about −163 °C, ` +
+        `which on the Moon means crater floors the Sun never reaches. Our ice map marks those from NASA LOLA terrain ` +
+        `(the Sun can never rise above the rim) and LRO Diviner temperatures, plus craters where ice has actually been ` +
+        `reported. This is the nearest of them to the lander. ${ice.basis}. The drive stops where ground gets steeper ` +
+        `than 15°; crater walls usually are.`;
+      iceRow = `<div class="row"><span class="k-ice">Nearest ice:</span>${info(iceWhy)} ${what}, ${km(ice.distance_m)} ${compass(ice.bearing_deg)} as the crow flies.${drive}</div>`;
     }
     el.innerHTML = `<h3>Site plan</h3>
-      <div class="row"><span class="k-solar">Solar array:</span> <b>${solar.sunlight_pct}%</b> sunlight · ${fromLander(solar)} · slope ${solar.slope_deg}°</div>
-      <div class="row"><span class="k-comms">Comms hub:</span> <b>${comms.earth_pct}%</b> Earth in view · ${fromLander(comms)} · slope ${comms.slope_deg}°</div>
-      <div class="row"><span class="k-route">Route between them:</span> ${route
+      <div class="row"><span class="k-solar">Solar array:</span>${info(solarWhy)} <b>${solar.sunlight_pct}%</b> sunlight · ${fromLander(solar)} · slope ${solar.slope_deg}°</div>
+      <div class="row"><span class="k-comms">Comms hub:</span>${info(commsWhy)} <b>${comms.earth_pct}%</b> Earth in view · ${fromLander(comms)} · slope ${comms.slope_deg}°</div>
+      <div class="row"><span class="k-route">Route between them:</span>${info(routeWhy)} ${route
         ? (route.same_spot ? 'same spot: one mast does both.' : `<b>${km(route.drive_m)}</b> drive (${km(route.straight_m)} straight), steepest ${route.max_slope_deg}°`)
         : '<span class="rough">no drivable route at ≤15°</span>'}</div>
-      ${comms.tower ? `<div class="row"><span class="k-comms">Comms tower:</span>
+      ${comms.tower ? `<div class="row"><span class="k-comms">Comms tower:</span>${info(towerWhy)}
         realistic <b>${comms.tower.realistic_m} m</b> → ${comms.tower.realistic_earth_pct}% Earth in view ·
-        ideal <b>${comms.tower.ideal_m} m</b> → ${comms.tower.ideal_earth_pct}%${comms.tower.beyond_concepts ? ' <span class="rough">(taller than current tower concepts, ~100–200 m)</span>' : ''}
-        <div class="small muted">Realistic = best up to 20 m (an estimate of what a small lander could deploy). Ideal = lowest height within 1 point of the best up to 500 m. ${comms.tower.reference}.</div></div>` : ''}
+        ideal <b>${comms.tower.ideal_m} m</b> → ${comms.tower.ideal_earth_pct}%${comms.tower.beyond_concepts ? ' <span class="rough">(taller than current tower concepts, ~100–200 m)</span>' : ''}</div>` : ''}
       ${iceRow}
-      <div class="small muted">Spots chosen for a ${solar.mast_m} m mast, within 5 km, slope ≤10° · routes avoid ground over 15°.</div>
+      <div class="small muted">Hover <span class="info-i">i</span> for why each was chosen.</div>
       ${grid.rough ? `<div class="small rough">Global terrain (~${Math.round(grid.resolution_m)} m): spots and routes are a rough estimate.</div>` : ''}`;
   }
+
 
   buildRenderer() {
     const host = document.getElementById('v3d-canvas');

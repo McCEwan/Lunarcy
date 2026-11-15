@@ -191,6 +191,11 @@ def plan_site(heights, lat: float, lon: float, sky, ice=None, *, level: str = "g
 
     i_sun, sun_pct = pick(sun_c, sun_az, sun_el)
     i_earth, earth_pct = pick(earth_c, earth_az, earth_el)
+    # For the explanation: the same measure at the lander itself (fine skyline, same mast).
+    at_lander = compute_skylines(heights, np.array([lat]), np.array([lon]), az_step=1.0, samples=250,
+                                 radius_m=150_000.0, observer_m=MAST_M)
+    lander_sun = float(_visible_pct(at_lander, 1.0, sun_az, sun_el)[0])
+    lander_earth = float(_visible_pct(at_lander, 1.0, earth_az, earth_el)[0])
 
     def spot(i: int, key: str, pct: float) -> dict:
         g = int(cand[i])
@@ -201,6 +206,8 @@ def plan_site(heights, lat: float, lon: float, sky, ice=None, *, level: str = "g
                 "drive_from_lander_m": round(float(drive_km[i] * 1000)), "mast_m": MAST_M}
 
     solar, comms = spot(i_sun, "sunlight_pct", sun_pct), spot(i_earth, "earth_pct", earth_pct)
+    solar["why"] = {"candidates": int(len(cand)), "lander_pct": round(lander_sun, 1), "refined": REFINE_TOP}
+    comms["why"] = {"candidates": int(len(cand)), "lander_pct": round(lander_earth, 1), "refined": REFINE_TOP}
     comms["tower"] = _tower(heights, comms["lat"], comms["lon"], earth_az, earth_el)
     g_sun, g_earth = int(cand[i_sun]), int(cand[i_earth])
     route = None

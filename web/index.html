@@ -63,7 +63,7 @@
           </label>
           <label id="ice-km-wrap">Maximum distance to an ice candidate (km)<input id="req-ice-km" type="number" min="1" max="1000" step="1" value="50"></label>
         </div>
-        <p id="ice-note" class="small muted">Ice survives only where it stays below ~110 K: permanently shadowed crater floors near the poles.
+        <p id="ice-note" class="small muted">Ice survives only where it stays below about −163 °C: permanently shadowed crater floors near the poles.
           We mark those from NASA LOLA terrain (does the Sun ever clear the rim?) and LRO Diviner temperatures, and rate every named
           polar crater. A lander needs sunlight and Earth contact, so it lands nearby and a rover drives in.</p>
         <div class="row2">
@@ -185,29 +185,6 @@
           <button id="compare-btn" class="secondary" disabled>Add to comparison</button>
         </div>
         <div id="site-links" class="links small"></div>
-      </section>
-
-      <section id="mission-section" hidden>
-        <h2>Mission</h2>
-        <label>Lander
-          <select id="lander-select"><option value="">Choose a lander</option></select>
-        </label>
-        <div id="lander-facts" class="muted small"></div>
-        <label>Payload (kg)
-          <input id="payload-input" type="number" min="0" step="1" placeholder="optional">
-        </label>
-        <div id="windows" class="small"></div>
-        <div class="row2">
-          <label>Landing date<input id="date-input" type="date"></label>
-          <label>Time (UTC)<input id="time-input" type="time" step="3600"></label>
-        </div>
-        <button id="evaluate-btn" disabled>Evaluate mission</button>
-      </section>
-
-      <section id="result-section" hidden>
-        <h2>Verdict <span id="verdict" class="badge"></span></h2>
-        <p id="launch" class="small muted"></p>
-        <ul id="checks" class="checks"></ul>
       </section>
 
       <details id="sources-box" hidden>

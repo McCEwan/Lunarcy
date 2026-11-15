@@ -19,10 +19,9 @@ const SITE_FILTERS = {
 };
 
 const state = {
-  landers: [],       // GET /landers
   catalog: [],       // GET /sites (notable landing sites)
   layers: {},        // web/assets/moontrek/layers.json
-  sites: [],         // comparison list: { id, lat, lng, name, catalog, lander, payload, landingDate, landingTime, result }
+  sites: [],         // comparison list: { id, lat, lng, name, catalog, result }
   current: null,     // the site being worked on (may or may not be in `sites`)
   filter: 'all',
   ice: null,         // GET /ice (or the `ice` block of a goal search): cold-trap grid + rated craters
@@ -37,58 +36,69 @@ const fmtLat = (lat) => `${Math.abs(lat).toFixed(2)}°${lat < 0 ? 'S' : 'N'}`;
 const fmtLon = (lon) => `${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
 const statusColor = (s) => (s.status === 'planned' ? '#5ee1ff' : '#ffd166');
 
-// ---- Stat colours: good (green) / warn (yellow) / bad (red) ------------------------
-// Tied to the evaluator's pass/fail thresholds (api/evaluator.py) and the lander's limits:
-// green = passes with margin, yellow = close to the limit, red = fails or poor.
+// ---- Stat colours and fill ---------------------------------------------------------
+// Each stat gets a colour (good / warn / bad: green, yellow, red) and a viability fill (0–1):
+// the tile is filled from the left by that fraction in its colour. `why` explains both.
 const realTemps = (r) => r.sources.some((s) => /Diviner/.test(s));
+const toC = (k) => k - 273.15;
+const fmtC = (k, digits = 0) => `${toC(k).toFixed(digits).replace('-', '−')} °C`;
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+const SLOPE_LIMIT_DEG = 10;          // typical lander touchdown limit
+const HOT_LIMIT_K = 400;             // typical rated surface-temperature limit (estimate)
 
-// Daytime high vs the lander's rated limit (an estimate in landers.json; 400 K if none chosen).
-function tempRating(r, lander) {
+function tempRating(r) {
   const t = r.site.temp_range_k;
-  if (!t || !realTemps(r)) return { level: 'none', why: 'Not rated: no real temperature data here' };
-  const limit = lander?.max_surface_temp_k ?? 400;
-  const level = t[1] <= limit - 30 ? 'good' : t[1] <= limit ? 'warn' : 'bad';
+  if (!t || !realTemps(r)) return { level: 'none', fill: 0, why: 'Not rated: no real temperature data here.' };
+  const level = t[1] <= HOT_LIMIT_K - 30 ? 'good' : t[1] <= HOT_LIMIT_K ? 'warn' : 'bad';
+  const swing = t[1] - t[0];
   return {
     level,
-    why: `Diviner daytime high vs ${lander ? lander.name + "'s" : 'a typical'} rated ${limit} K (estimated): ` +
-      `green ≤${limit - 30} K, yellow up to ${limit} K, red above. Night lows near ${t[0].toFixed(0)} K need heaters/survival mode.`,
+    fill: clamp01(1 - swing / 400),
+    why: `Colour: the Diviner daytime high (${fmtC(t[1])}) against a typical hardware limit of ${fmtC(HOT_LIMIT_K)} ` +
+      `(an estimate): green up to ${fmtC(HOT_LIMIT_K - 30)}, yellow up to ${fmtC(HOT_LIMIT_K)}, red above. ` +
+      `Fill: how gentle the day–night swing is (${swing.toFixed(0)} °C here; a full bar would be no swing, an empty one 400 °C). ` +
+      `The night low of ${fmtC(t[0])} needs heaters or a survival mode.`,
   };
 }
 
 function rateStats(site, r) {
   const s = r.site;
-  const lander = state.landers.find((l) => l.id === site.lander);
   const kind = r.period?.kind ?? 'lunar_day';
   const longPeriod = kind === 'lunar_day' || (kind === 'range' && r.period.hours >= 25 * 24);
-  const slopeLimit = lander?.max_slope_deg ?? 10;
   const peakSun = Math.max(...r.power_w.map((p) => p.w_m2));
   const band = (v, good, warn, higherIsBetter = true) => {
     if (v === null || v === undefined) return 'none';
     return higherIsBetter ? (v >= good ? 'good' : v >= warn ? 'warn' : 'bad')
                           : (v <= good ? 'good' : v <= warn ? 'warn' : 'bad');
   };
+  const pctFill = (p) => clamp01((p ?? 0) / 100);
   let sunlight;
   if (kind === 'day') {
-    sunlight = { level: band(s.sun_hours, 18, 6), why: 'Daylight in the 24 h day: green ≥18 h, yellow 6–18 h (Sun rises or sets that day), red <6 h' };
-  } else if (kind === 'mission') {
-    sunlight = { level: band(s.sunlight_pct, 75, 60), why: 'Over the mission: green ≥75%, yellow 60–75%, red <60% (fails the 60% check)' };
+    sunlight = { level: band(s.sun_hours, 18, 6), fill: clamp01(s.sun_hours / 24),
+      why: 'Hours the Sun is above the real terrain skyline in this 24 h day. Green ≥18 h, yellow 6–18 h (the Sun rises or sets that day), red <6 h. Fill = share of the day in sunlight.' };
   } else if (longPeriod) {
-    sunlight = { level: band(s.sunlight_pct, 45, 30), why: 'Over a month or more (the Sun is up at most ~50% of a lunar day away from the poles): green ≥45%, yellow 30–45%, red <30%' };
+    sunlight = { level: band(s.sunlight_pct, 45, 30), fill: pctFill(s.sunlight_pct),
+      why: 'Share of the period with the Sun above the real terrain skyline (crater rims and mountains counted). Away from the poles the Sun is up at most ~50% of a lunar month, so green ≥45%, yellow 30–45%, red <30%. Fill = that share.' };
   } else {
-    sunlight = { level: band(s.sunlight_pct, 70, 40), why: 'Over this date range: green ≥70%, yellow 40–70%, red <40%' };
+    sunlight = { level: band(s.sunlight_pct, 70, 40), fill: pctFill(s.sunlight_pct),
+      why: 'Share of this date range with the Sun above the real terrain skyline. Green ≥70%, yellow 40–70%, red <40%. Fill = that share.' };
   }
   return {
     sunlight,
     earth: kind === 'day'
-      ? { level: band(s.earth_hours, 22.8, 19.2), why: 'Earth in view in the 24 h day: green ≥22.8 h (95%), yellow 19.2–22.8 h, red <19.2 h (80%)' }
-      : { level: band(s.earth_visible_pct, 95, 80), why: 'Direct-to-Earth comms: green ≥95%, yellow 80–95%, red <80% (fails the 80% check)' },
+      ? { level: band(s.earth_hours, 22.8, 19.2), fill: clamp01(s.earth_hours / 24),
+          why: 'Hours Earth is above the terrain skyline in this 24 h day, i.e. direct radio contact is possible. Green ≥22.8 h (95%), yellow 19.2–22.8 h, red <19.2 h. Fill = share of the day.' }
+      : { level: band(s.earth_visible_pct, 95, 80), fill: pctFill(s.earth_visible_pct),
+          why: 'Share of the period Earth is above the terrain skyline, i.e. direct-to-Earth radio without a relay satellite. Green ≥95%, yellow 80–95%, red <80%. Fill = that share.' },
     slope: {
-      level: band(s.slope_deg, 0.7 * slopeLimit, slopeLimit, false),
-      why: `${lander ? lander.name : 'Typical lander'} limit ${slopeLimit}°: green ≤${(0.7 * slopeLimit).toFixed(0)}°, yellow up to ${slopeLimit}°, red above`,
+      level: band(s.slope_deg, 0.7 * SLOPE_LIMIT_DEG, SLOPE_LIMIT_DEG, false),
+      fill: s.slope_deg === null ? 0 : clamp01(1 - s.slope_deg / (2 * SLOPE_LIMIT_DEG)),
+      why: `Ground slope from NASA LOLA over the shown distance. Landers typically need ≤${SLOPE_LIMIT_DEG}°: green ≤${(0.7 * SLOPE_LIMIT_DEG).toFixed(0)}°, yellow up to ${SLOPE_LIMIT_DEG}°, red above. Fill = how flat it is (full at 0°, empty at ${2 * SLOPE_LIMIT_DEG}°).`,
     },
-    sun_m2: { level: band(peakSun, 500, 150), why: 'Peak sunlight on a flat panel: green ≥500 W/m² (Sun ≥~22°), yellow 150–500 (~6–22°), red <150 W/m²' },
-    elevation: { level: 'none', why: 'Not rated: elevation alone is neither good nor bad' },
-    temperature: tempRating(r, lander),
+    sun_m2: { level: band(peakSun, 500, 150), fill: clamp01(peakSun / 1361),
+      why: 'Strongest sunlight on a flat, upward-facing panel in the period. Green ≥500 W/m² (Sun ≥~22° up), yellow 150–500, red <150. Fill = share of the full 1,361 W/m² (Sun straight overhead). Near the poles the Sun stays low, so tilted or vertical panels do much better than this.' },
+    elevation: { level: 'none', fill: 0, why: 'Height above the Moon\'s 1,737.4 km reference sphere (NASA LOLA). Not rated: elevation alone is neither good nor bad, though high rims often see more Sun and Earth.' },
+    temperature: tempRating(r),
   };
 }
 
@@ -114,7 +124,7 @@ const globe = new Globe(globeEl)
   .pointLng('lng')
   .pointAltitude((s) => zs(s === state.current ? PIN.altitude : PIN.altitude * 0.6))
   .pointRadius((s) => zs(s === state.current ? PIN.radius : PIN.radius * 0.7))
-  .pointColor((s) => (s === state.current ? PIN_COLOR : landerColor(s.lander)))
+  .pointColor((s) => (s === state.current ? PIN_COLOR : COMPARE_PIN))
   // A pulsing ring around the selected site so it's easy to find
   .ringLat('lat')
   .ringLng('lng')
@@ -173,7 +183,20 @@ const [ambientLight, sunLight] = globe.lights();
 }
 const defaultLighting = { ambient: ambientLight.intensity, sun: sunLight.intensity, parent: null };
 
+// North and south pole markers: Cinzel letters on a thin stem, floating just above each pole.
+const POLE_MARKERS = [
+  { kind: 'pole', pole: 'N', name: 'North Pole', lat: 90, lng: 0, alt: 0.1 },
+  { kind: 'pole', pole: 'S', name: 'South Pole', lat: -90, lng: 0, alt: 0.1 },
+];
+const poleData = () => (state.revealed ? POLE_MARKERS : []);
+
 function skyMarker(d) {
+  if (d.kind === 'pole') {
+    const el = document.createElement('div');
+    el.className = `pole-marker ${d.pole === 'N' ? 'north' : 'south'}`;
+    el.innerHTML = `<span class="pole-letter">${d.pole}</span><span class="pole-name">${d.name}</span>`;
+    return el;
+  }
   const el = document.createElement('div');
   el.className = `sky-marker ${d.kind}`;
   el.innerHTML = d.kind === 'sun'
@@ -187,7 +210,6 @@ function skyMarker(d) {
 
 function skyTime() {
   const s = state.current;
-  if (s?.landingDate) return `${s.landingDate}T${s.landingTime ?? '00:00'}:00Z`;
   return null;   // now
 }
 
@@ -219,6 +241,7 @@ function applyGlobeSky() {
     sunLight.intensity = 2.3;
     ambientLight.intensity = 1.8;
     globe.htmlElementsData(state.revealed ? [
+      ...poleData(),
       { kind: 'sun', lat: sub.sub_solar.lat, lng: sub.sub_solar.lon, alt: 1.1 },
       { kind: 'earth', lat: sub.sub_earth.lat, lng: sub.sub_earth.lon, alt: 0.7 },
     ] : []);
@@ -230,7 +253,7 @@ function applyGlobeSky() {
     sunLight.position.set(0, 1, 0);
     sunLight.intensity = defaultLighting.sun;
     ambientLight.intensity = defaultLighting.ambient;
-    globe.htmlElementsData([]);
+    globe.htmlElementsData(poleData());
     $('sky-caption').textContent = 'Even lighting, so every side of the Moon is easy to see.';
   }
 }
@@ -320,16 +343,16 @@ function refreshLabels() {
 const ICE_COLORS = { known: '#4da3ff', likely: '#a9cfff', possible: '#cfd8e3', unlikely: '#8a94a3' };
 const ICE_RATING_TEXT = {
   known: 'Published ice evidence',
-  likely: 'Likely cold trap: floor permanently shadowed and below 110 K',
-  possible: 'Possible: only one of permanent shadow / below 110 K',
-  unlikely: 'Unlikely: sunlit floor and warmer than 110 K',
+  likely: 'Likely cold trap: floor permanently shadowed and below −163 °C',
+  possible: 'Possible: only one of permanent shadow / below −163 °C',
+  unlikely: 'Unlikely: sunlit floor and warmer than −163 °C',
 };
 
 function craterTooltip(c) {
   const ev = c.evidence ? `<br><i>${esc(c.evidence.summary)}</i><br><span class="muted">${esc(c.evidence.citation)}</span>` : '';
   return `<b>${esc(c.name)}</b> · ${c.diameter_km} km wide, ~${(c.depth_m / 1000).toFixed(1)} km deep<br>` +
     `${esc(ICE_RATING_TEXT[c.rating])}<br>` +
-    `Floor ${c.floor_shadowed ? 'never sees the Sun' : 'gets some sunlight'} · coldest max ${fmt(c.coldest_tmax_k, 0, ' K')}${ev}`;
+    `Floor ${c.floor_shadowed ? 'never sees the Sun' : 'gets some sunlight'} · coldest daytime max ${c.coldest_tmax_k === null ? '—' : fmtC(c.coldest_tmax_k)}${ev}`;
 }
 
 function pickCrater(c) {
@@ -391,10 +414,6 @@ function setLayer(key) {
 // the analysis period; the 3D timelapse uses that when a landing has been chosen.
 async function evaluateSite(site, { mission = false } = {}) {
   const body = { lat: site.lat, lon: site.lng };
-  if (site.lander) body.lander_id = site.lander;
-  if (site.payload !== null && site.payload !== '') body.payload_kg = Number(site.payload);
-  if (site.landingDate && site.landingTime) body.landing_time = `${site.landingDate}T${site.landingTime}:00Z`;
-  else if (site.landingDate) body.landing_date = site.landingDate;
   body.terrain_level = site.terrainLevel ?? 'global';
   if (!mission) {
     body.period_start = state.period.start;
@@ -415,9 +434,6 @@ async function evaluateSite(site, { mission = false } = {}) {
       const { detail } = await res.json();
       const msgs = Array.isArray(detail) ? detail.map((d) => `${d.loc.at(-1)}: ${d.msg}`) : [String(detail)];
       showError(msgs.join(' · '));
-    } else if (res.status === 404) {
-      showError('That lander no longer exists. Refreshing the list.');
-      await loadLanders();
     } else if (res.status === 502) {
       const { detail } = await res.json();
       showError(String(detail));
@@ -430,12 +446,6 @@ async function evaluateSite(site, { mission = false } = {}) {
   }
 }
 
-async function loadLanders() {
-  state.landers = await (await fetch('/landers')).json();
-  const select = $('lander-select');
-  select.innerHTML = '<option value="">Choose a lander</option>' +
-    state.landers.map((l) => `<option value="${esc(l.id)}">${esc(l.name)} (${esc(l.operator)})</option>`).join('');
-}
 
 async function loadCatalog() {
   state.catalog = await (await fetch('/sites')).json();
@@ -453,7 +463,7 @@ async function newSite(lat, lng, catalog = null, extra = {}, { background = fals
   const site = {
     id: crypto.randomUUID(), lat, lng,
     name: catalog?.name ?? extra.name ?? null, catalog, info: extra.info ?? null,
-    lander: catalog?.lander_id ?? null, payload: null, landingDate: null, landingTime: null,
+    lander: null,
     terrainLevel: 'global', result: null,
   };
   if (!background) {
@@ -692,12 +702,18 @@ function renderSearch() {
   const terrainNote = s.terrain.precomputed_skylines
     ? 'Terrain (LOLA skylines) counted everywhere.'
     : `Smooth-Moon screen; the top ${s.terrain.checked_in_stage2} regions were re-checked with LOLA terrain.`;
+  const howTip = 'How the search works: every 0.5° cell of the Moon (about 15 km, 259,200 cells) is scored over your dates. ' +
+    'JPL Horizons gives where the Sun and Earth are in the sky; each cell has a terrain skyline traced from NASA LOLA, so crater rims ' +
+    'and mountains block them as they really would. A cell "meets" your mission if it clears every threshold; "marginal" if it is within ' +
+    '85% of each. Touching cells are grouped into regions, and each region is shown by its best cell.' +
+    (s.ice ? ' With the ice goal, suitable cells within your distance of an ice candidate (a permanently shadowed crater floor ' +
+      'below −163 °C, or a crater with published ice evidence) are marked light blue and ranked first.' : '');
   $('search-summary').innerHTML =
-    `<p><b>${esc(c.period_start)} → ${esc(c.period_end)}</b> · ${esc(c.region_label)}</p>` +
+    `<p><b>${esc(c.period_start)} → ${esc(c.period_end)}</b> · ${esc(c.region_label)} <span class="info-i" data-tip="${esc(howTip)}" tabindex="0">i</span></p>` +
     (c.goal_label ? `<p>Goal: <b>${esc(c.goal_label)}</b> · within ${c.max_ice_km} km of an ice candidate</p>` : '') +
     `<p>Needs ≥${c.min_sun_pct}% daylight · ≥${c.min_earth_pct}% Earth in view · ≥${c.min_avg_w_m2} W/m² average panel sunlight · slope ≤${c.max_slope_deg}°</p>` +
     (s.ice ? `<p class="muted">Ice candidates: ${s.ice.counts.known_craters} craters with published ice evidence, ` +
-      `${s.ice.counts.likely_craters} more likely cold traps, ${s.ice.counts.likely_cells.toLocaleString()} grid cells both permanently shadowed and below ${s.ice.ice_stable_k} K.</p>` : '') +
+      `${s.ice.counts.likely_craters} more likely cold traps, ${s.ice.counts.likely_cells.toLocaleString()} grid cells both permanently shadowed and below ${fmtC(s.ice.ice_stable_k)}.</p>` : '') +
     `<p class="muted">${n.meeting_cells.toLocaleString()} of ${n.searched_cells.toLocaleString()} grid cells (0.5°, ~15 km) meet everything, ` +
     `about ${Math.round(n.meeting_area_km2).toLocaleString()} km² in ${n.regions} regions` +
     (s.ice ? `; ${n.ice_range_cells.toLocaleString()} of them (~${Math.round(n.ice_range_area_km2).toLocaleString()} km², light blue on the globe) are within ${c.max_ice_km} km of ice` : '') +
@@ -709,9 +725,9 @@ function renderSearch() {
   }
   const lvl = (v, min) => (v >= min ? 'good' : v >= 0.85 * min ? 'warn' : 'bad');
   $('region-list').innerHTML = s.regions.map((r, i) => `
-    <li data-region="${i}" class="${r.passes_with_terrain ? '' : 'dim'}"
-        title="${r.passes_with_terrain ? 'Best spot in this region' : 'Fails once local terrain is counted'}">
+    <li data-region="${i}" class="${r.passes_with_terrain ? '' : 'dim'}">
       <b>${fmtLat(r.lat)}, ${fmtLon(r.lon)}</b>
+      <span class="info-i" data-tip="${esc(regionWhy(r, i, s))}" tabindex="0">i</span>
       <span class="muted">· ${r.area_km2.toLocaleString()} km²</span>
       <button class="add secondary" data-add-region="${i}" title="Add to comparison">+ Compare</button>
       <div class="stats">
@@ -725,6 +741,37 @@ function renderSearch() {
       ${r.nearest_ice_crater ? `<div class="small muted">Nearest rated crater: <b>${esc(r.nearest_ice_crater.name)}</b>
         (${r.nearest_ice_crater.rating === 'known' ? 'published ice evidence' : 'likely cold trap'}), ${r.nearest_ice_crater.distance_km} km</div>` : ''}
     </li>`).join('');
+}
+
+// Why a search result was recommended, and why it ranks where it does.
+function regionWhy(r, i, s) {
+  const c = s.criteria;
+  const margins = [
+    ['daylight', (r.sun_pct - c.min_sun_pct) / Math.max(100 - c.min_sun_pct, 1), `${r.sun_pct}% (needs ≥${c.min_sun_pct}%)`],
+    ['Earth in view', (r.earth_pct - c.min_earth_pct) / Math.max(100 - c.min_earth_pct, 1), `${r.earth_pct}% (needs ≥${c.min_earth_pct}%)`],
+    ['panel sunlight', Math.min((r.avg_w_m2 - c.min_avg_w_m2) / Math.max(c.min_avg_w_m2, 50), 1), `${r.avg_w_m2} W/m² (needs ≥${c.min_avg_w_m2})`],
+    ['slope', (c.max_slope_deg - r.slope_deg) / Math.max(c.max_slope_deg, 1), `${r.slope_deg}° (needs ≤${c.max_slope_deg}°)`],
+  ];
+  const tight = margins.reduce((a, b) => (b[1] < a[1] ? b : a));
+  const parts = [
+    `Why #${i + 1}: its best spot meets every requirement over ${c.period_start} → ${c.period_end}: ` +
+      margins.map(([name, , txt]) => `${name} ${txt}`).join(', ') + '.',
+    `Its tightest requirement is ${tight[0]}, at ${Math.round(100 * Math.max(tight[1], 0))}% of the way from "just meets it" to ideal.`,
+  ];
+  if (r.ice_km !== undefined) {
+    parts.push(r.within_ice_range
+      ? `It is ${r.ice_km} km from the nearest ice candidate (your limit is ${c.max_ice_km} km), so it is in the light-blue group, which ranks first.`
+      : `The nearest ice candidate is ${r.ice_km} km away, beyond your ${c.max_ice_km} km limit, so it ranks after every ice-range region.`);
+    if (r.nearest_ice_crater) {
+      parts.push(`Nearest rated crater: ${r.nearest_ice_crater.name} (${r.nearest_ice_crater.rating === 'known' ? 'published ice evidence' : 'likely cold trap'}), ${r.nearest_ice_crater.distance_km} km.`);
+    }
+  }
+  parts.push('Ranking: ' + (r.ice_km !== undefined ? 'ice-range regions first, then ' : '') +
+    `the tightest margin, then area (${r.area_km2.toLocaleString()} km² here).`);
+  parts.push(r.passes_with_terrain
+    ? 'Checked against the real terrain skyline (NASA LOLA): still passes with crater rims and mountains counted.'
+    : 'Fails once the local terrain skyline is counted (rims block the Sun or Earth), so it is dimmed.');
+  return parts.join(' ');
 }
 
 function regionTooltip(r) {
@@ -838,36 +885,11 @@ function loadImage(src) {
   });
 }
 
-async function onLanderChange() {
-  const site = state.current;
-  if (!site) return;
-  site.lander = $('lander-select').value || null;
-  site.landingDate = null;
-  site.landingTime = null;
-  const result = await evaluateSite(site);
-  if (result) site.result = result;
-  render();
-}
-
-async function onEvaluate() {
-  const site = state.current;
-  if (!site) return;
-  site.payload = $('payload-input').value;
-  site.landingDate = $('date-input').value || null;
-  site.landingTime = site.landingDate ? ($('time-input').value || null) : null;
-  const result = await evaluateSite(site);
-  if (result) site.result = result;
-  render();
-  updateGlobeSky();
-}
-
 async function onOpen3d(initialT = 0) {
   const site = state.current;
   if (!site?.result) return;
-  const landed = Boolean(site.lander && site.landingDate);
-  // With a landing chosen, the timelapse plays the mission; otherwise the analysis period.
-  const result = landed ? (await evaluateSite(site, { mission: true })) : site.result;
-  if (!result) return;
+  const landed = false;              // the app no longer picks a lander or landing time
+  const result = site.result;
   open3dView({
     title: site.name ?? 'Custom site',
     lat: site.lat,
@@ -920,9 +942,7 @@ function onAddToComparison() {
 
 // ---- Rendering -----------------------------------------------------------------
 
-function landerColor(id) {
-  return state.landers.find((l) => l.id === id)?.color ?? '#7cc4ff';
-}
+const COMPARE_PIN = '#e6e6e6';      // sites in the comparison list (the selected one is magenta)
 
 function renderCatalog() {
   const test = SITE_FILTERS[state.filter].test;
@@ -972,7 +992,6 @@ function render() {
   const r = site?.result;
   $('hint').hidden = !!site;
   $('site-section').hidden = !site;
-  $('mission-section').hidden = !r;
   renderCompareList();
   if (!site) return;
 
@@ -997,7 +1016,6 @@ function render() {
     $('sky-now').innerHTML = '';
     $('site-tiles').innerHTML = '';
     $('site-terrain').innerHTML = '';
-    $('result-section').hidden = true;
     $('view3d-btn').disabled = true;
     $('compare-btn').disabled = true;
     return;
@@ -1018,7 +1036,7 @@ function render() {
 
   // Site stats (terrain-aware, with the smooth-horizon value for comparison)
   const s = r.site;
-  const temp = s.temp_range_k ? `${s.temp_range_k[0].toFixed(0)}–${s.temp_range_k[1].toFixed(0)} K` : '—';
+  const temp = s.temp_range_k ? `${fmtC(s.temp_range_k[0])} to ${fmtC(s.temp_range_k[1])}` : '—';
   const vsFlat = (v, flat) => (Math.abs(v - flat) >= 0.5 ? `<div class="sub">flat horizon: ${flat.toFixed(0)}%</div>` : '');
   const vsFlatH = (v, flat) => (Math.abs(v - flat) >= 0.1 ? ` · flat horizon: ${flat.toFixed(1)} h` : '');
   const rating = rateStats(site, r);
@@ -1041,60 +1059,14 @@ function render() {
     ['Peak sunlight on panel', fmt(peakSun, 0, ' W/m²'), '<div class="sub">flat panel, per m²</div>', rating.sun_m2],
   ];
   $('site-tiles').innerHTML = tiles
-    .map(([k, v, sub, rt]) => `<div class="tile ${rt.level}" title="${esc(rt.why)}">` +
-      `<div class="k">${k}</div><div class="v">${esc(v)}</div>${sub}</div>`)
+    .map(([k, v, sub, rt]) => `<div class="tile ${rt.level}" style="--fill:${(100 * (rt.fill ?? 0)).toFixed(0)}%" ` +
+      `data-tip="${esc(rt.why)}" tabindex="0"><div class="k">${k} <span class="info-i" aria-hidden="true">i</span></div>` +
+      `<div class="v">${esc(v)}</div>${sub}</div>`)
     .join('') + (s.slope_deg === null ? '<p class="small muted">No terrain data here.</p>' : '');
   $('compare-btn').disabled = state.sites.includes(site);
   $('compare-btn').textContent = state.sites.includes(site) ? 'In comparison ✓' : 'Add to comparison';
 
-  // Mission inputs
-  $('lander-select').value = site.lander ?? '';
-  $('payload-input').value = site.payload ?? '';
-  $('date-input').value = site.landingDate ?? '';
-  $('time-input').value = site.landingTime ?? '';
-  $('date-input').min = new Date().toISOString().slice(0, 10);
-  $('date-input').max = MAX_DATE;
-  $('evaluate-btn').disabled = !site.lander;
   $('view3d-btn').disabled = false;
-  $('view3d-btn').textContent = site.lander && site.landingDate
-    ? 'Open 3D view · timelapse from landing'
-    : 'Open 3D view';
-
-  const lander = state.landers.find((l) => l.id === site.lander);
-  $('lander-facts').innerHTML = lander
-    ? `${lander.payload_capacity_kg} kg payload · ${lander.max_slope_deg}° max slope · ` +
-      `${lander.mission_days}-day mission · ${lander.transit_days}-day transit` +
-      (lander.estimated_fields.length ? `<br>Estimated: ${esc(lander.estimated_fields.join(', '))}` : '')
-    : '';
-
-  // Landing windows (TODO frontend: replace with the timeline strip)
-  if (r.windows) {
-    $('windows').innerHTML = r.windows.length
-      ? 'Valid landing windows (click to use the suggested landing time):<br>' + r.windows
-          .map((w) => {
-            const t = w.start_time.slice(11, 16);
-            return `<button class="window-btn" data-date="${w.start}" data-time="${t}" ` +
-              `title="Earliest landing ${w.start_time.replace('T', ' ')} UTC, latest ${w.end_time.replace('T', ' ')} UTC">` +
-              `${w.start} ${t} UTC → ${w.end}</button>`;
-          })
-          .join('')
-      : 'No valid landing windows in the next few months.';
-  } else if (!site.landingDate) {
-    $('windows').innerHTML = '';
-  }
-
-  // Verdict
-  const hasChecks = r.checks.length > 0;
-  $('result-section').hidden = !hasChecks;
-  if (hasChecks) {
-    const verdict = $('verdict');
-    verdict.textContent = r.pass ? 'PASS' : 'FAIL';
-    verdict.className = 'badge ' + (r.pass ? 'pass' : 'fail');
-    $('launch').textContent = r.launch_estimate ? `Estimated launch: ${r.launch_estimate}` : '';
-    $('checks').innerHTML = r.checks
-      .map((ch) => `<li class="${ch.pass ? 'ok' : ''}"><b>${esc(ch.name)}</b>: ${esc(ch.detail)}</li>`)
-      .join('');
-  }
 
   // Sources
   $('sources-box').hidden = r.sources.length === 0;
@@ -1119,7 +1091,7 @@ function renderCompareList() {
   $('compare-table').querySelector('thead').innerHTML = '<tr><th></th>' + cols.map(({ s }) => {
     const name = s.name ?? `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`;
     return `<th class="site-head ${s === state.current ? 'active' : ''}" data-id="${s.id}"
-      style="border-top-color:${landerColor(s.lander)}" title="Open this site">
+      style="border-top-color:${COMPARE_PIN}" title="Open this site">
       ${esc(name)} <button class="remove" data-remove="${s.id}" title="Remove from comparison">×</button></th>`;
   }).join('') + '</tr>';
 
@@ -1127,13 +1099,11 @@ function renderCompareList() {
     const active = col.s === state.current ? ' active-col' : '';
     if (!col.r) return `<td class="muted${active}">…</td>`;
     return rating
-      ? `<td class="${rating.level}${active}" title="${esc(rating.why)}">${html}</td>`
+      ? `<td class="${rating.level}${active}" data-tip="${esc(rating.why)}">${html}</td>`
       : `<td class="${active.trim()}">${html}</td>`;
   };
   const rows = [
     ['Where', (c) => cell(c, `${fmtLat(c.s.lat)}<br>${fmtLon(c.s.lng)}`)],
-    ['Verdict', (c) => cell(c, c.r?.pass === true ? '<span class="badge pass">PASS</span>'
-      : c.r?.pass === false ? '<span class="badge fail">FAIL</span>' : '<span class="muted">no lander</span>')],
     [day ? 'Daylight (of 24 h)' : 'Sunlight', (c) => cell(c,
       day ? `${c.r?.site.sun_hours.toFixed(1)} h` : fmt(c.r?.site.sunlight_pct, 0, '%'), c.rt?.sunlight)],
     [day ? 'Earth in view (of 24 h)' : 'Earth in view', (c) => cell(c,
@@ -1143,9 +1113,7 @@ function renderCompareList() {
     ['Slope', (c) => cell(c, fmt(c.r?.site.slope_deg, 1, '°'), c.rt?.slope)],
     ['Elevation', (c) => cell(c, fmt(c.r?.site.elevation_m, 0, ' m'))],
     ['Temperature', (c) => cell(c, c.r?.site.temp_range_k
-      ? `${c.r.site.temp_range_k[0].toFixed(0)}–${c.r.site.temp_range_k[1].toFixed(0)} K` : '—', c.rt?.temperature)],
-    ['Lander', (c) => cell(c, esc(state.landers.find((l) => l.id === c.s.lander)?.name ?? '—'))],
-    ['Landing', (c) => cell(c, c.s.landingDate ? `${c.s.landingDate}<br>${c.s.landingTime ?? '00:00'} UTC` : '—')],
+      ? `${fmtC(c.r.site.temp_range_k[0])}<br>to ${fmtC(c.r.site.temp_range_k[1])}` : '—', c.rt?.temperature)],
     ['Terrain', (c) => cell(c, c.r?.terrain.level === 'detailed' ? 'detailed ~30 m' : `global ~${c.r?.terrain.resolution_m.toFixed(0)} m`)],
   ];
   $('compare-table').querySelector('tbody').innerHTML = rows
@@ -1163,8 +1131,6 @@ function showError(msg) {
 
 // ---- Wire up -------------------------------------------------------------------
 
-$('lander-select').addEventListener('change', onLanderChange);
-$('evaluate-btn').addEventListener('click', onEvaluate);
 $('compare-btn').addEventListener('click', onAddToComparison);
 $('view3d-btn').addEventListener('click', () => onOpen3d());
 $('show-sites').addEventListener('change', refreshLabels);
@@ -1189,13 +1155,6 @@ $('site-list').addEventListener('click', (e) => {
 $('coord-form').addEventListener('submit', (e) => {
   e.preventDefault();
   newSite(Number($('coord-lat').value), Number($('coord-lon').value));
-});
-$('windows').addEventListener('click', (e) => {
-  const date = e.target.dataset?.date;
-  if (date) {
-    $('date-input').value = date;
-    $('time-input').value = e.target.dataset.time ?? '';
-  }
 });
 $('compare-table').addEventListener('click', (e) => {
   const removeId = e.target.dataset?.remove;
@@ -1283,10 +1242,32 @@ $('region-list').addEventListener('click', async (e) => {
 })();
 
 $('intro').addEventListener('click', leaveIntro);
+
+// ---- Explanation tooltips: any element with data-tip shows it on hover or keyboard focus ----
+const tipEl = document.createElement('div');
+tipEl.id = 'tip';
+tipEl.setAttribute('role', 'tooltip');
+document.body.appendChild(tipEl);
+function showTip(el) {
+  tipEl.textContent = el.dataset.tip;
+  tipEl.classList.add('on');
+  const r = el.getBoundingClientRect(), t = tipEl.getBoundingClientRect();
+  let x = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), innerWidth - t.width - 8);
+  let y = r.bottom + 8;
+  if (y + t.height > innerHeight - 8) y = Math.max(8, r.top - t.height - 8);
+  tipEl.style.left = `${x}px`;
+  tipEl.style.top = `${y}px`;
+}
+const hideTip = () => tipEl.classList.remove('on');
+for (const [on, off] of [['mouseover', 'mouseout'], ['focusin', 'focusout']]) {
+  document.addEventListener(on, (e) => { const el = e.target.closest?.('[data-tip]'); if (el) showTip(el); });
+  document.addEventListener(off, (e) => { if (e.target.closest?.('[data-tip]')) hideTip(); });
+}
+document.addEventListener('scroll', hideTip, true);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !$('intro').hidden) { e.preventDefault(); leaveIntro(); }
 });
 
 loadLayers();
-loadLanders().then(() => { refreshPoints(); return loadCatalog(); });
+loadCatalog();
 updateGlobeSky();

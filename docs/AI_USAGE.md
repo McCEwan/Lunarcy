@@ -301,6 +301,21 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **Follow-up:** the user reported the Earth still looked unlit. The cause was the custom Earth shader skipping three.js's output colour conversion (`#include <colorspace_fragment>`), so the sRGB textures rendered far too dark. Added it and centred the light on the camera side; a screenshot then showed a fully lit day side.
 - **Still unverified / known limits:** checked in browser screenshots only.
 
+### 2026-11-15 · Session 18: pole markers, explanation tooltips, Celsius, no lander UI, filled stat tiles
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** add markers above the north and south poles in our style; add tooltips explaining why the analysis chose each location; show temperatures in Celsius; remove the lander section and its pass/fail; fill each stat box in proportion to its viability.
+- **What the AI did:**
+  - N/S pole markers on the globe's html layer (Cinzel letters in frosted rings, "NORTH POLE"/"SOUTH POLE").
+  - A shared floating tooltip for any `data-tip` element (hover or keyboard focus). It explains: each stat tile (what it measures, colour thresholds, what the fill means); each search result (every requirement against the user's thresholds, the tightest margin, ice range and nearest rated crater, the ranking rule, the terrain check); how the search works; and each site-plan row (candidates compared and the lander's own value, the route rule, the tower method, the ice target's basis). `/site/plan` gained `solar.why`/`comms.why` (candidate count and the value at the lander).
+  - Celsius everywhere in the UI, including the ice texts in `api/ice.py` (≤−163 °C); the API numbers stay in kelvin.
+  - Removed the Mission section (lander, payload, landing date and windows) and the Verdict section, the compare rows for verdict, lander and landing, and the lander list loading. Compare pins are now a neutral white. Ratings use a typical 10° slope and a 127 °C (400 K) limit, labelled as estimates.
+  - Stat tiles are filled from the left by viability in their rating colour.
+- **Checks the AI ran on its own output:** pytest gives 91 passed, 3 skipped. In the browser after an ice search: both pole markers present; result #1's explanation lists its four margins, "tightest requirement is daylight", 19.6 km to ice, the ranking and the terrain check. Site tiles read e.g. Sunlight 58 % (good, 58 % fill), Temperature −203 °C to −9 °C, Peak sunlight 221 W/m² (warn, 16 %); the tooltip opened on hover; the Mission and Verdict sections are gone. The 3D plan had five explanation icons. No console errors. The AI fixed one wording error: the spot explanation had mixed up the 10° spot limit and the 15° drive limit.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the temperature fill (gentleness of the day–night swing out of 400 °C) and the slope fill (empty at 20°) are design choices, not standards. The pole markers and tooltips were not judged at full resolution (the browser pane was hidden).
+
 ---
 
 ## Entry template
