@@ -123,11 +123,8 @@ const zs = (v) => v * zoomScale;
 // The selected site: hot magenta, which nothing on the grey Moon or in the heatmap uses.
 const PIN_COLOR = '#ff2bd6';
 const PIN = { radius: 1.1, altitude: 0.03, ring: 3.2 };   // degrees / globe radii at the whole-Moon view
-// Hover beacon: a thin beam straight up from the hovered site, 1.1 Moon radii long, so it
-// sticks out past the Moon's edge even when the site is on the far side.
-const BEACON_ALT = 1.1;
-const pinAlt = (s) => (s.beacon ? BEACON_ALT : zs(s === state.current ? PIN.altitude : PIN.altitude * 0.6));
-const pinRadius = (s) => (s.beacon ? zs(0.28) : zs(s === state.current ? PIN.radius : PIN.radius * 0.7));
+const pinAlt = (s) => zs(s === state.current ? PIN.altitude : PIN.altitude * 0.6);
+const pinRadius = (s) => zs(s === state.current ? PIN.radius : PIN.radius * 0.7);
 
 const globeEl = $('globe');
 const globe = new Globe(globeEl)
@@ -140,9 +137,9 @@ const globe = new Globe(globeEl)
   .pointLng('lng')
   .pointAltitude(pinAlt)
   .pointRadius(pinRadius)
-  .pointColor((s) => (s.beacon ? 'rgba(255, 255, 255, 0.9)' : s === state.current ? PIN_COLOR : COMPARE_PIN))
+  .pointColor((s) => (s === state.current ? PIN_COLOR : COMPARE_PIN))
   .pointResolution(16)
-  .onPointHover((s) => setHover(s && !s.beacon ? { lat: s.lat, lng: s.lng, name: s.name ?? 'Selected site' } : s?.beacon ? state.hover : null))
+  .onPointHover((s) => setHover(s ? { lat: s.lat, lng: s.lng, name: s.name ?? 'Selected site' } : null))
   // A pulsing ring around the selected site so it's easy to find
   .ringLat('lat')
   .ringLng('lng')
@@ -162,7 +159,7 @@ const globe = new Globe(globeEl)
   .pathDashAnimateTime(0)
   .pathLabel('label')
   .pointLabel((s) => esc(s.name ?? `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`))
-  .onPointClick((s) => { if (!s.beacon) selectSite(s); })
+  .onPointClick((s) => selectSite(s))
   // Notable landing sites from /sites
   .labelLat('lat')
   .labelLng('lon')
@@ -184,8 +181,6 @@ const globe = new Globe(globeEl)
   .htmlAltitude('alt')
   .htmlElement((d) => skyMarker(d))
   .htmlElementVisibilityModifier((el, visible) => {
-    // The hover beacon's tag always shows; it says so when the site is behind the Moon.
-    if (el.classList.contains('beacon-tag')) { el.style.opacity = '1'; el.classList.toggle('behind', !visible); return; }
     el.style.opacity = visible ? '1' : '0.25';
   });
 // TODO (frontend): placeholder lander model at the active site via customLayerData.
@@ -214,21 +209,12 @@ const POLE_MARKERS = [
 ];
 const poleData = () => (state.revealed ? POLE_MARKERS : []);
 
-// Everything on the html layer: pole badges, Sun/Earth markers, and the hover beacon's name tag.
+// Everything on the html layer: pole badges and Sun/Earth markers.
 function refreshHtml() {
-  const tag = state.hover && state.revealed
-    ? [{ kind: 'beacon', lat: state.hover.lat, lng: state.hover.lng, alt: BEACON_ALT + 0.04, name: state.hover.name }]
-    : [];
-  globe.htmlElementsData([...poleData(), ...(state.skyMarkers ?? []), ...tag]);
+  globe.htmlElementsData([...poleData(), ...(state.skyMarkers ?? [])]);
 }
 
 function skyMarker(d) {
-  if (d.kind === 'beacon') {
-    const el = document.createElement('div');
-    el.className = 'beacon-tag';
-    el.textContent = d.name;
-    return el;
-  }
   if (d.kind === 'pole') {
     const el = document.createElement('div');
     el.className = `pole-marker ${d.pole === 'N' ? 'north' : 'south'}`;
@@ -322,9 +308,9 @@ function resizeGlobe() {
 window.addEventListener('resize', resizeGlobe);
 resizeGlobe();
 
-// ---- Hover beacon -------------------------------------------------------------------------
-// Hovering a site anywhere (globe label or pin, Sites list, search results, comparison) shows a
-// white beam rising from it into space, its name at the top, and enlarges its label.
+// ---- Hover highlight ----------------------------------------------------------------------
+// Hovering a site anywhere (globe label or pin, Sites list, search results, comparison) turns
+// its globe label white and enlarges it.
 const isHovered = (s) => !!state.hover && Math.abs(s.lat - state.hover.lat) < 1e-6 && Math.abs((s.lon ?? s.lng) - state.hover.lng) < 1e-6;
 function setHover(h) {
   const same = (a, b) => (!a && !b) || (a && b && a.lat === b.lat && a.lng === b.lng);
@@ -373,7 +359,6 @@ function refreshPoints() {
   if (state.planSite && state.planSite !== state.current) { state.planSite = null; globe.pathsData([]); }
   const points = [...state.sites];
   if (state.current && !points.includes(state.current)) points.push(state.current);
-  if (state.hover && state.revealed) points.push({ beacon: true, lat: state.hover.lat, lng: state.hover.lng, name: state.hover.name });
   globe.pointsData(points);
   globe.ringsData(state.current ? [state.current] : []);
 }
@@ -514,7 +499,7 @@ async function loadCatalog() {
 
 // `extra`: { name, info } for sites that aren't from the catalog (e.g. search results).
 // `background: true` creates and evaluates the site without switching to it.
-async function newSite(lat, lng, catalog = null, extra = {}, { background = false } = {}) {
+async function newSite(lat, lng, catalog = null, extra = {}, { background = false, fly = true } = {}) {
   const site = {
     id: crypto.randomUUID(), lat, lng,
     name: catalog?.name ?? extra.name ?? null, catalog, info: extra.info ?? null, why: extra.why ?? null,
@@ -527,7 +512,7 @@ async function newSite(lat, lng, catalog = null, extra = {}, { background = fals
     render();
     updateGlobeSky();
     showTab('site');
-    globe.pointOfView({ lat, lng, altitude: 1.6 }, 800);
+    if (fly) { resetTilt(); globe.pointOfView({ lat, lng, altitude: 1.6 }, 800); }
   }
   const result = await evaluateSite(site);
   if (result) site.result = result;
@@ -666,13 +651,30 @@ function syncGoalFields() {
   $('req-ice-km').disabled = !ice;     // a hidden field must not block the form
 }
 
+// Modes: "explore" (free exploring, plus the guided tour and the Learn tab) and "plan" (mission
+// requirements and the site finder). body.mode-explore shows the .explore-only items.
+const MODE_NAMES = { explore: 'Explore mode', plan: 'Mission planning mode' };
+function setMode(mode) {
+  state.mode = mode;
+  document.body.classList.toggle('mode-explore', mode === 'explore');
+  $('mode-name').textContent = MODE_NAMES[mode];
+  if (mode !== 'explore') {
+    endTour();
+    closeVersus();
+    if (lapse.timer || !$('tl-reset').hidden) resetLapse();   // the time-lapse lives in the Explore-only box
+    if (state.tab === 'learn') showTab(state.search ? 'search' : state.current ? 'site' : 'sites');
+  }
+}
+
 function chooseExplore() {
+  setMode('explore');
   showChoice(false);
   showLanding(false);
   showTab(state.search ? 'search' : 'sites');
 }
 
 function choosePlan() {
+  setMode('plan');
   showChoice(false);
   showLanding(true);
 }
@@ -1222,6 +1224,7 @@ function openShared(sh) {
   }
   syncPeriodInputs();
   revealApp();
+  setMode('explore');
   setPanelCollapsed(false);            // a shared link is about the site: show its panel
   newSite(sh.lat, sh.lon, null, sh.name ? { name: sh.name } : {});
 }
@@ -1249,6 +1252,261 @@ async function syncCompareDates() {
   state.sites = state.sites.filter((c) => { const k = scenarioKey(c, c.period); if (seen.has(k)) return false; seen.add(k); return true; });
   refreshPoints();
   render();
+}
+
+// ---- Learning in explore mode: guided tour, equator vs pole, lunar-month time-lapse ----------
+
+const isoDay = (offsetDays = 0) => new Date(Date.now() + offsetDays * 864e5).toISOString().slice(0, 10);
+// Lessons look at a whole lunar month from today, so day and night both show up.
+function monthPeriod() {
+  state.period = { mode: 'range', start: isoDay(0), end: isoDay(28) };
+  syncPeriodInputs();
+}
+function ensureExploring() {
+  if (!$('choice').hidden || !$('landing').hidden || !state.revealed) {
+    chooseExplore();
+  }
+  $('intro').hidden = true;
+}
+
+// Tilted close-up camera (tour only). globe.gl's camera controls always aim at the Moon's
+// centre (they pull any other target back to it), so during the tour the controls are switched
+// off and the camera is driven directly: it moves to a point above and behind the site and looks
+// at the site at an angle. resetTilt() hands control back to globe.gl before any normal fly-to.
+const tilt = { on: false, raf: 0, look: null };
+function tiltTo(lat, lng, { dist = 0.45, tiltDeg = 58, heading = 0, ms = 1800 } = {}) {
+  const cam = globe.camera(), ctl = globe.controls(), R = globe.getGlobeRadius();
+  const v = (o) => [o.x, o.y, o.z];
+  const norm = (a) => { const l = Math.hypot(...a) || 1; return a.map((x) => x / l); };
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const P = v(globe.getCoords(lat, lng, 0));
+  const up = norm(P);
+  const pole = norm(v(globe.getCoords(90, 0, 0)));
+  // local north (another axis right at the pole), rotated by the heading = the way the camera faces
+  let north = pole.map((x, i) => x - up[i] * dot(up, pole));
+  if (Math.hypot(...north) < 1e-3) north = [0, 0, -1];
+  north = norm(north);
+  const east = norm([north[1] * up[2] - north[2] * up[1], north[2] * up[0] - north[0] * up[2], north[0] * up[1] - north[1] * up[0]]);
+  const h = heading * Math.PI / 180, t = tiltDeg * Math.PI / 180;
+  const ahead = north.map((x, i) => x * Math.cos(h) + east[i] * Math.sin(h));
+  const camEnd = P.map((x, i) => x + (up[i] * Math.cos(t) - ahead[i] * Math.sin(t)) * dist * R);
+  ctl.enabled = false;                 // globe.gl only updates the camera through enabled controls
+  ctl.autoRotate = false;
+  const camStart = v(cam.position);
+  const lookStart = tilt.look ?? [0, 0, 0];
+  const upStart = v(cam.up);
+  tilt.on = true;
+  cancelAnimationFrame(tilt.raf);
+  const t0 = performance.now();
+  const step = (now) => {
+    const f = Math.min(1, (now - t0) / ms);
+    const e = f < 0.5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;
+    const mix = (a, b) => a.map((x, i) => x + (b[i] - x) * e);
+    const look = mix(lookStart, P);
+    cam.position.set(...mix(camStart, camEnd));
+    cam.up.set(...norm(mix(upStart, up)));          // the site's "up" becomes screen-up as we arrive
+    cam.lookAt(...look);
+    tilt.look = look;
+    if (f < 1) tilt.raf = requestAnimationFrame(step);
+    else onCameraChange();                           // re-size pins for the new distance
+  };
+  tilt.raf = requestAnimationFrame(step);
+}
+function resetTilt() {
+  if (!tilt.on) return;
+  cancelAnimationFrame(tilt.raf);
+  const cam = globe.camera(), ctl = globe.controls();
+  const R = globe.getGlobeRadius(), d = Math.hypot(cam.position.x, cam.position.y, cam.position.z);
+  if (d < R * 1.3) cam.position.multiplyScalar((R * 1.3) / d);     // step back off the surface
+  cam.up.set(0, 1, 0);
+  cam.lookAt(0, 0, 0);
+  ctl.target.set(0, 0, 0);
+  ctl.enabled = true;
+  ctl.update();
+  tilt.on = false;
+  tilt.look = null;
+}
+
+// 1. Guided tour: the globe flies between stops; each opens a site and says what to look at.
+const TOUR = [
+  { title: 'Welcome to the Moon', lat: 5, lng: 10, alt: 2.4,
+    text: 'The Moon turns once for every orbit of Earth, so it always keeps the same face towards us. One lunar day, from sunrise to sunrise, lasts 29.5 Earth days: about two weeks of light, then two weeks of night. With no air there is no twilight: the change is instant.',
+    look: 'Tick "Light by the real Sun" (top left) to see where it is day and night on the Moon right now.' },
+  { title: 'Apollo 11: the equator', lat: 0.674, lng: 23.473, alt: 1.3, site: 'Apollo 11 (tour)', view: { dist: 0.5, tiltDeg: 55, heading: 0 },
+    text: 'Near the equator the Sun rises, climbs high in the sky and sets about 15 Earth days later, like a very slow Earth day. Daytime power is plentiful, but the two-week night drops to about −170 °C, so equipment needs heaters or batteries to survive it.',
+    look: 'Site tab → Sky & horizon: in the panorama the Sun\'s path arcs far above the grey terrain band.' },
+  { title: 'Shackleton rim: the south pole', lat: -89.45, lng: -137.3, alt: 0.6, site: 'Shackleton rim (tour)', view: { dist: 0.32, tiltDeg: 62, heading: 135 },
+    text: 'At the poles the Sun never climbs more than about 1.5° above a flat horizon. Instead of rising and setting it circles the sky, skimming the edge. A high crater rim like this one can see it for most of the month, which is why landers aim for polar ridges.',
+    look: 'The Sun elevation tile reads only about 2°, and the Sun\'s path in the panorama runs right along the terrain line.' },
+  { title: 'Shackleton floor: never sunlit', lat: -89.67, lng: 129.78, alt: 0.6, site: 'Shackleton crater floor (tour)', view: { dist: 0.3, tiltDeg: 60, heading: -50 },
+    text: 'A few kilometres from the rim and about 4 km lower, the floor of Shackleton crater never sees the Sun at all. LRO\'s Diviner measured it below −180 °C, cold enough to keep water ice for billions of years, and LOLA found the floor unusually bright, a hint of ice at the surface.',
+    look: 'Sunlight: 0%. Same pole, a few km away, a completely different world: small moves matter.' },
+  { title: 'Chang\'e 4: the far side', lat: -45.444, lng: 177.588, alt: 1.6, site: 'Chang\'e 4 (tour)', view: { dist: 0.5, tiltDeg: 55, heading: 0 },
+    text: 'From the far side, Earth is never in the sky, so there is no direct radio contact at all. When China\'s Chang\'e 4 made the first far-side landing in 2019, it talked to Earth through Queqiao, a relay satellite parked beyond the Moon.',
+    look: 'The Earth visible tile reads 0%, and the Earth path in the panorama stays below the horizon all month.' },
+  { title: 'Mare Smythii: Earth on the horizon', lat: -1.3, lng: 87.0, alt: 1.6, site: 'Mare Smythii (tour)', view: { dist: 0.5, tiltDeg: 60, heading: -90 },
+    text: 'At the edge of the near side, Earth hangs on the horizon. The Moon wobbles slightly as it orbits (libration, about 7°), so over the month Earth rises a little, sets again, and traces a small loop in the sky. At the south pole the same wobble decides when a lander can call home.',
+    look: 'In the panorama, Earth\'s path is a narrow loop crossing the terrain line: in view, then hidden.' },
+  { title: 'Your turn', lat: -30, lng: 20, alt: 2.4,
+    text: 'Click anywhere on the Moon to see its sky, sunlight and Earth contact. Try "Equator vs pole" to see two skies side by side, or play a lunar month on the globe. Ready to plan? "Edit mission requirements" searches the whole Moon for sites that fit your mission.',
+    look: 'Hover the i next to any number for the reasoning behind it.' },
+];
+const tour = { i: -1 };
+function startTour() {
+  if (state.mode !== 'explore') return;       // the tour is part of Explore mode
+  ensureExploring();
+  closeVersus();
+  monthPeriod();
+  setPanelCollapsed(false);
+  tour.i = 0;
+  $('tour').hidden = false;
+  document.body.classList.add('touring');   // the legend steps aside while the tour card is up
+  showTourStop();
+}
+async function showTourStop() {
+  const stop = TOUR[tour.i];
+  $('tour').querySelector('.tour-step').textContent = `Stop ${tour.i + 1} of ${TOUR.length}`;
+  $('tour').querySelector('.tour-title').textContent = stop.title;
+  $('tour').querySelector('.tour-text').textContent = stop.text;
+  $('tour').querySelector('.tour-look').innerHTML = `<b>Look:</b> ${esc(stop.look)}`;
+  $('tour-back').disabled = tour.i === 0;
+  $('tour-next').textContent = tour.i === TOUR.length - 1 ? 'Finish' : 'Next →';
+  setHover(stop.site ? { lat: stop.lat, lng: stop.lng, name: stop.title } : null);
+  if (stop.site) {
+    const p = newSite(stop.lat, stop.lng, null, { name: stop.site, info: stop.title }, { fly: false });
+    tiltTo(stop.lat, stop.lng, stop.view);            // tilted close-up, tour only
+    showTab('site');
+    await p;
+  } else {
+    resetTilt();
+    globe.pointOfView({ lat: stop.lat, lng: stop.lng, altitude: stop.alt }, 1400);
+    if (tour.i === TOUR.length - 1) showTab('learn');
+  }
+}
+function endTour() {
+  if (tilt.on) {
+    resetTilt();
+    const c = state.current;
+    globe.pointOfView({ lat: c?.lat ?? 0, lng: c?.lng ?? 0, altitude: FULL_VIEW_ALTITUDE }, 1200);
+  }
+  tour.i = -1;
+  $('tour').hidden = true;
+  document.body.classList.remove('touring');
+  setHover(null);
+}
+
+// 2. Equator vs pole: the same month at Apollo 11 and the Shackleton rim, side by side.
+let versusPanels = [];
+async function equatorVsPole() {
+  ensureExploring();
+  endTour();
+  monthPeriod();
+  const modal = $('versus-modal');
+  modal.hidden = false;
+  modal.querySelector('.versus-summary').textContent = 'Working out both skies for the next lunar month… (JPL Horizons)';
+  modal.querySelectorAll('.versus-facts, .versus-panel').forEach((e) => { e.innerHTML = ''; });
+  const defs = [
+    { lat: 0.674, lng: 23.473, name: 'Apollo 11 · equator' },
+    { lat: -89.45, lng: -137.3, name: 'Shackleton rim · south pole' },
+  ];
+  const sites = await Promise.all(defs.map((d) => newSite(d.lat, d.lng, null, { name: d.name, info: 'Equator vs pole lesson' }, { background: true })));
+  if (modal.hidden) return;
+  if (sites.some((x) => !x.result)) { modal.querySelector('.versus-summary').textContent = 'Could not evaluate both sites, try again.'; return; }
+  const facts = sites.map((x) => skyFacts(x.result));
+  versusPanels.forEach((p) => p.destroy());
+  versusPanels = [];
+  const cols = modal.querySelectorAll('.versus-col');
+  for (let k = 0; k < 2; k++) {
+    const x = sites[k], f = facts[k];
+    cols[k].querySelector('.versus-name').textContent = x.name;
+    cols[k].querySelector('.versus-facts').innerHTML = `
+      <div><b>${f.sunPct}%</b> of the month in sunlight · <b>${f.earthPct}%</b> with Earth in view</div>
+      <div>Sun reaches <b>${f.maxEl}°</b> at most · longest daylight <b>${f.longestDay}</b> · longest night <b>${f.longestNight}</b></div>
+      <div>Average flat-panel sunlight <b>${f.avgW} W/m²</b></div>`;
+    const panel = new SkyPanel(cols[k].querySelector('.versus-panel'), { noExpand: true });
+    panel.set(x.result, await skylineFor(x), 0);
+    versusPanels.push(panel);
+    // Add both to the comparison table (same dates), for later.
+    x.period = { ...state.period };
+    if (!inComparison(x)) state.sites.push(x);
+  }
+  const [eq, po] = facts;
+  modal.querySelector('.versus-summary').innerHTML =
+    `Same ${state.period.start} → ${state.period.end}, two very different skies. At the equator the Sun climbs to <b>${eq.maxEl}°</b>, ` +
+    `then disappears for a long night (<b>${eq.longestNight}</b>). At the pole it never gets above <b>${po.maxEl}°</b>, so it circles just above ` +
+    `the horizon, and a high rim can stay lit for <b>${po.longestDay}</b>. Earth is in view <b>${eq.earthPct}%</b> of the time at Apollo 11 ` +
+    `(near side, Earth high in the sky) but <b>${po.earthPct}%</b> at the pole, where Earth sits on the horizon and the Moon's wobble hides it. ` +
+    'Drag either slider; both sites are now in the Compare tab too.';
+  refreshPoints();
+  render();
+}
+function closeVersus() {
+  $('versus-modal').hidden = true;
+  versusPanels.forEach((p) => p.destroy());
+  versusPanels = [];
+}
+function skyFacts(r) {
+  const s = r.sky;
+  const run = (f) => {
+    let best = 0, cur = 0;
+    s.forEach((p) => { cur = f(p) ? cur + 1 : 0; best = Math.max(best, cur); });
+    return best >= 48 ? `${(best / 24).toFixed(1)} days` : `${best} h`;
+  };
+  return {
+    sunPct: Math.round(r.site.sunlight_pct), earthPct: Math.round(r.site.earth_visible_pct),
+    maxEl: Math.max(...s.map((p) => p.sun_el)).toFixed(1),
+    longestDay: run((p) => p.sun_visible), longestNight: run((p) => !p.sun_visible),
+    avgW: Math.round(r.power_w.reduce((a, p) => a + p.w_m2, 0) / r.power_w.length),
+  };
+}
+
+// 3. Lunar-month time-lapse: the globe's real-Sun lighting over 29.5 days (6-hour steps).
+const lapse = { data: null, i: 0, timer: null };
+async function toggleLapse() {
+  ensureExploring();
+  if (lapse.timer) { pauseLapse(); return; }
+  if (!lapse.data) {
+    $('tl-date').textContent = 'Asking JPL Horizons for a month of Sun and Earth positions…';
+    try {
+      lapse.data = await (await fetch(`/sky/subpoints/series?start=${isoDay(0)}&days=29.5&step_hours=6`)).json();
+    } catch { $('tl-date').textContent = 'Could not load the time-lapse.'; return; }
+    $('tl-slider').max = String(lapse.data.times.length - 1);
+  }
+  $('real-sun').checked = true;
+  $('tl-slider').hidden = false;
+  $('tl-reset').hidden = false;
+  endTour();
+  resetTilt();
+  globe.pointOfView({ lat: 0, lng: globe.pointOfView().lng, altitude: 2.6 }, 800);
+  lapse.timer = setInterval(() => { lapse.i = (lapse.i + 1) % lapse.data.times.length; showLapseFrame(); }, 110);
+  document.querySelectorAll('[data-learn="lapse"]').forEach((b) => { b.textContent = '❚❚ Pause'; });
+}
+function pauseLapse() {
+  clearInterval(lapse.timer);
+  lapse.timer = null;
+  document.querySelectorAll('[data-learn="lapse"]').forEach((b) => { b.textContent = '▶ Play a lunar month'; });
+}
+function showLapseFrame() {
+  const d = lapse.data, i = lapse.i;
+  state.subpoints = {
+    sub_solar: { lat: d.sun[i][0], lon: d.sun[i][1] }, sub_earth: { lat: d.earth[i][0], lon: d.earth[i][1] },
+    time: d.times[i], source: d.source,
+  };
+  applyGlobeSky();
+  // Darker fill than the everyday globe lighting, so the terminator (day/night line) stands out.
+  ambientLight.intensity = 0.3;
+  sunLight.intensity = 3.2;
+  $('tl-slider').value = String(i);
+  const day = (i * 6 / 24).toFixed(1);
+  $('tl-date').innerHTML = `${d.times[i].replace('T', ' ').replace('Z', '')} UTC · day ${day} of 29.5<br>` +
+    'Watch the line between day and night sweep round. Near the poles it never really passes: they sit in low, grazing light.';
+}
+function resetLapse() {
+  pauseLapse();
+  $('tl-slider').hidden = true;
+  $('tl-reset').hidden = true;
+  $('tl-date').textContent = '';
+  updateGlobeSky();     // back to the real Sun right now
 }
 
 // ---- Rendering -----------------------------------------------------------------
@@ -1443,6 +1701,7 @@ function renderCompareList() {
 }
 
 function flyTo(site) {
+  resetTilt();
   globe.pointOfView({ lat: site.lat, lng: site.lng, altitude: 1.6 }, 800);
 }
 
@@ -1524,7 +1783,20 @@ $('nearby-out').addEventListener('click', (e) => {
   if (cell) newSite(Number(cell.dataset.lat), Number(cell.dataset.lon), null, { name: 'Nearby alternative', info: `Within 3 km of ${state.current?.name ?? 'the previous site'}` });
 });
 $('share-btn').addEventListener('click', onShare);
-// Hovering a site in the panel lights its beacon on the globe.
+document.addEventListener('click', (e) => {
+  const what = e.target.closest('[data-learn]')?.dataset.learn;
+  if (what === 'tour') startTour();
+  else if (what === 'versus') equatorVsPole();
+  else if (what === 'lapse') toggleLapse();
+});
+$('tour-next').addEventListener('click', () => { if (tour.i >= TOUR.length - 1) endTour(); else { tour.i++; showTourStop(); } });
+$('tour-back').addEventListener('click', () => { if (tour.i > 0) { tour.i--; showTourStop(); } });
+$('tour-exit').addEventListener('click', endTour);
+$('versus-close').addEventListener('click', closeVersus);
+$('versus-modal').addEventListener('click', (e) => { if (e.target === $('versus-modal')) closeVersus(); });
+$('tl-slider').addEventListener('input', (e) => { pauseLapse(); lapse.i = Number(e.target.value); showLapseFrame(); });
+$('tl-reset').addEventListener('click', resetLapse);
+// Hovering a site in the panel highlights its label on the globe.
 const hoverFromPanel = (e) => {
   const li = e.target.closest('#site-list li[data-site], #region-list li[data-region], #compare-table th[data-id]');
   if (!li) { setHover(null); return; }
@@ -1545,8 +1817,13 @@ $('compare-csv').addEventListener('click', exportCompareCsv);
 $('compare-sync').addEventListener('click', syncCompareDates);
 $('sky-modal-close').addEventListener('click', closeSkyModal);
 $('sky-modal').addEventListener('click', (e) => { if (e.target === $('sky-modal')) closeSkyModal(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('sky-modal').hidden) closeSkyModal(); });
-$('choice-learn').addEventListener('click', () => { chooseExplore(); showTab('learn'); setPanelCollapsed(false); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!$('sky-modal').hidden) closeSkyModal();
+  if (!$('versus-modal').hidden) closeVersus();
+  if (!$('tour').hidden) endTour();
+});
+$('mode-change').addEventListener('click', () => { endTour(); showChoice(true); });
 $('show-ice').addEventListener('change', onShowIce);
 $('region-list').addEventListener('click', async (e) => {
   const why = e.target.closest('.why-link');
@@ -1599,7 +1876,7 @@ $('region-list').addEventListener('click', async (e) => {
   } catch { /* ignore bad saved data */ }
   syncGoalFields();
   if (recall('panel-collapsed') === '1') setPanelCollapsed(true);
-  for (const id of ['layers', 'legend']) if (recall(`collapsed-${id}`) === '1') setBoxCollapsed(id, true);
+  for (const id of ['layers', 'legend', 'learnbox']) if (recall(`collapsed-${id}`) === '1') setBoxCollapsed(id, true);
   syncPeriodInputs();
   showTab('search');
   renderSearch();

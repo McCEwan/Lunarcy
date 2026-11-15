@@ -162,6 +162,26 @@ def sky_subpoints(time: datetime | None = None) -> dict:
     return EPHEM.subpoints(np.datetime64(when, "h"))
 
 
+@app.get("/sky/subpoints/series")
+def sky_subpoints_series(
+    start: date | None = None,
+    days: float = Query(29.5, ge=1, le=60),
+    step_hours: int = Query(6, ge=1, le=24),
+) -> dict:
+    """Sub-solar and sub-Earth points through a span, in one Horizons query: drives the
+    globe's lunar-day time-lapse."""
+    first = start or datetime.now(timezone.utc).date()
+    times = ephemeris.time_grid(first, days, step_hours)
+    sub = EPHEM.subpoint_series(times)
+    wrap = lambda v: round((float(v) + 180.0) % 360.0 - 180.0, 3)   # noqa: E731
+    return {
+        "times": [str(np.datetime64(t, "m")) + "Z" for t in times],
+        "sun": [[round(float(a), 3), wrap(b)] for a, b in zip(sub["sun_lat"], sub["sun_lon"])],
+        "earth": [[round(float(a), 3), wrap(b)] for a, b in zip(sub["earth_lat"], sub["earth_lon"])],
+        "source": sub["source"],
+    }
+
+
 _skylines: Skylines | None = None
 
 

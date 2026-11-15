@@ -70,3 +70,13 @@ def test_nearby_shows_the_wall_blocking_the_east():
 def test_site_dates_endpoint_validates_priority():
     r = client.get("/site/dates", params={"lat": -85, "lon": 0, "priority": "cheapest"})
     assert r.status_code == 422
+
+
+def test_subpoint_series_spans_a_lunar_day():
+    r = client.get("/sky/subpoints/series", params={"start": "2027-03-01", "days": 29.5, "step_hours": 6})
+    assert r.status_code == 200
+    out = r.json()
+    assert len(out["times"]) == len(out["sun"]) == len(out["earth"]) == 118
+    lons = np.unwrap(np.radians([p[1] for p in out["sun"]]))
+    assert abs(np.degrees(lons[-1] - lons[0])) > 300          # the Sun goes (almost) all the way round
+    assert all(abs(p[0]) < 2 for p in out["sun"])              # and stays within ~1.5 deg of the equator

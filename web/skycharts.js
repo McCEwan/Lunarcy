@@ -90,7 +90,7 @@ export class SkyPanel {
         <b>Sky &amp; horizon</b> <span class="info-i" data-tip="${esc(tip)}" tabindex="0">i</span>
         <span class="sky-actions">
           <button type="button" class="chip" data-act="csv" title="Download this timeline as CSV">CSV</button>
-          ${this.opts.large ? '' : `<button type="button" class="expand-btn" data-act="enlarge" title="Open the charts full size in their own window">
+          ${this.opts.large || this.opts.noExpand ? '' : `<button type="button" class="expand-btn" data-act="enlarge" title="Open the charts full size in their own window">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 8.5 7.5M6.5 13.5h-4v-4M2.5 13.5l5-5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Expand charts</button>`}
         </span>
