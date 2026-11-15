@@ -1,0 +1,1468 @@
+{
+ "source": "USGS Gazetteer of Planetary Nomenclature (IAU), planetarynames.wr.usgs.gov",
+ "url": "https://planetarynames.wr.usgs.gov/shapefiles/MOON_nomenclature_center_pts.zip",
+ "min_abs_lat": 75.0,
+ "min_diameter_km": 8.0,
+ "craters": [
+  {
+   "name": "Zeeman",
+   "lat": -75.068,
+   "lon": -135.061,
+   "diameter_km": 186.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/6711"
+  },
+  {
+   "name": "Drygalski",
+   "lat": -79.574,
+   "lon": -87.177,
+   "diameter_km": 162.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/1645"
+  },
+  {
+   "name": "Ashbrook",
+   "lat": -81.104,
+   "lon": -110.575,
+   "diameter_km": 157.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/422"
+  },
+  {
+   "name": "Demonax",
+   "lat": -78.086,
+   "lon": 59.355,
+   "diameter_km": 121.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/1484"
+  },
+  {
+   "name": "Scott",
+   "lat": -82.353,
+   "lon": 48.515,
+   "diameter_km": 107.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/5395"
+  },
+  {
+   "name": "Amundsen",
+   "lat": -84.44,
+   "lon": 83.069,
+   "diameter_km": 103.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/247"
+  },
+  {
+   "name": "Cabeus",
+   "lat": -85.33,
+   "lon": -42.133,
+   "diameter_km": 100.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/953",
+   "evidence": {
+    "kind": "direct",
+    "summary": "LCROSS impact (Oct 2009) threw up a plume containing water ice and vapour, about 5.6 % by mass.",
+    "citation": "Colaprete et al. 2010, Science 330, 463-468"
+   }
+  },
+  {
+   "name": "Short B",
+   "lat": -75.893,
+   "lon": -5.172,
+   "diameter_km": 89.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13079"
+  },
+  {
+   "name": "Schomberger",
+   "lat": -76.639,
+   "lon": 24.691,
+   "diameter_km": 85.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/5378"
+  },
+  {
+   "name": "Newton",
+   "lat": -76.521,
+   "lon": -17.441,
+   "diameter_km": 83.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/4235"
+  },
+  {
+   "name": "Nobile",
+   "lat": -85.275,
+   "lon": 53.273,
+   "diameter_km": 79.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/4321"
+  },
+  {
+   "name": "Ganswindt",
+   "lat": -79.416,
+   "lon": 111.167,
+   "diameter_km": 77.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/2101"
+  },
+  {
+   "name": "H\u00e9derv\u00e1ri",
+   "lat": -81.772,
+   "lon": 85.601,
+   "diameter_km": 74.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/2620"
+  },
+  {
+   "name": "Malapert",
+   "lat": -85.0,
+   "lon": 11.403,
+   "diameter_km": 72.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/3603"
+  },
+  {
+   "name": "Brashear P",
+   "lat": -76.374,
+   "lon": -176.319,
+   "diameter_km": 68.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/7910"
+  },
+  {
+   "name": "Newton G",
+   "lat": -78.076,
+   "lon": -18.955,
+   "diameter_km": 62.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11616"
+  },
+  {
+   "name": "Newton A",
+   "lat": -80.051,
+   "lon": -20.815,
+   "diameter_km": 62.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11610"
+  },
+  {
+   "name": "Idel'son",
+   "lat": -81.348,
+   "lon": 112.694,
+   "diameter_km": 59.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/2650"
+  },
+  {
+   "name": "Cabeus B",
+   "lat": -82.259,
+   "lon": -54.585,
+   "diameter_km": 59.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8058"
+  },
+  {
+   "name": "Oberbeck",
+   "lat": -83.55,
+   "lon": 68.14,
+   "diameter_km": 58.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/16449"
+  },
+  {
+   "name": "De Forest",
+   "lat": -76.936,
+   "lon": -163.333,
+   "diameter_km": 56.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/1437"
+  },
+  {
+   "name": "Nefed'ev",
+   "lat": -81.072,
+   "lon": 135.772,
+   "diameter_km": 52.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14538"
+  },
+  {
+   "name": "Shoemaker",
+   "lat": -88.137,
+   "lon": 45.911,
+   "diameter_km": 51.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/5494",
+   "evidence": {
+    "kind": "indirect",
+    "summary": "LRO LAMP far-UV ratios consistent with surface water frost.",
+    "citation": "Hayne et al. 2015, Icarus 255, 58-69"
+   }
+  },
+  {
+   "name": "Haworth",
+   "lat": -87.45,
+   "lon": -5.17,
+   "diameter_km": 51.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14502",
+   "evidence": {
+    "kind": "indirect",
+    "summary": "LRO LAMP far-UV ratios consistent with surface water frost; strongest of Haworth, Faustini, Shoemaker.",
+    "citation": "Hayne et al. 2015, Icarus 255, 58-69"
+   }
+  },
+  {
+   "name": "Simpelius B",
+   "lat": -75.17,
+   "lon": 10.097,
+   "diameter_km": 50.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13098"
+  },
+  {
+   "name": "Newton B",
+   "lat": -81.454,
+   "lon": -16.72,
+   "diameter_km": 46.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11611"
+  },
+  {
+   "name": "Casatus E",
+   "lat": -77.252,
+   "lon": -53.966,
+   "diameter_km": 44.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8133"
+  },
+  {
+   "name": "Henson",
+   "lat": -88.57,
+   "lon": -130.63,
+   "diameter_km": 43.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/16004"
+  },
+  {
+   "name": "Faustini",
+   "lat": -87.183,
+   "lon": 84.31,
+   "diameter_km": 42.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/1919",
+   "evidence": {
+    "kind": "indirect",
+    "summary": "LRO LAMP far-UV ratios consistent with surface water frost.",
+    "citation": "Hayne et al. 2015, Icarus 255, 58-69"
+   }
+  },
+  {
+   "name": "Cabeus A",
+   "lat": -82.077,
+   "lon": -40.24,
+   "diameter_km": 40.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8057"
+  },
+  {
+   "name": "Wiechert",
+   "lat": -84.033,
+   "lon": 164.701,
+   "diameter_km": 40.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/6541"
+  },
+  {
+   "name": "Schomberger C",
+   "lat": -77.171,
+   "lon": 15.448,
+   "diameter_km": 40.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12941"
+  },
+  {
+   "name": "De Forest N",
+   "lat": -79.166,
+   "lon": -165.758,
+   "diameter_km": 40.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8615"
+  },
+  {
+   "name": "Malapert K",
+   "lat": -78.704,
+   "lon": 6.373,
+   "diameter_km": 39.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11086"
+  },
+  {
+   "name": "Malapert C",
+   "lat": -80.982,
+   "lon": 10.083,
+   "diameter_km": 39.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11083"
+  },
+  {
+   "name": "Wiechert P",
+   "lat": -85.128,
+   "lon": 151.757,
+   "diameter_km": 38.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13889"
+  },
+  {
+   "name": "Casatus D",
+   "lat": -76.888,
+   "lon": -43.303,
+   "diameter_km": 37.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8132"
+  },
+  {
+   "name": "Wiechert J",
+   "lat": -85.202,
+   "lon": -177.637,
+   "diameter_km": 34.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13888"
+  },
+  {
+   "name": "Newton D",
+   "lat": -76.085,
+   "lon": -15.318,
+   "diameter_km": 34.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11613"
+  },
+  {
+   "name": "Neumayer A",
+   "lat": -75.079,
+   "lon": 73.876,
+   "diameter_km": 34.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11598"
+  },
+  {
+   "name": "Demonax E",
+   "lat": -78.239,
+   "lon": 43.21,
+   "diameter_km": 33.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8721"
+  },
+  {
+   "name": "Malapert A",
+   "lat": -80.183,
+   "lon": -3.79,
+   "diameter_km": 33.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11081"
+  },
+  {
+   "name": "Sverdrup",
+   "lat": -88.321,
+   "lon": -153.387,
+   "diameter_km": 32.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/5782"
+  },
+  {
+   "name": "de Gerlache",
+   "lat": -88.485,
+   "lon": -88.345,
+   "diameter_km": 32.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/1439"
+  },
+  {
+   "name": "Malapert B",
+   "lat": -78.791,
+   "lon": -2.928,
+   "diameter_km": 32.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11082"
+  },
+  {
+   "name": "Short A",
+   "lat": -76.942,
+   "lon": -1.277,
+   "diameter_km": 32.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13078"
+  },
+  {
+   "name": "Boguslawsky F",
+   "lat": -75.42,
+   "lon": 52.972,
+   "diameter_km": 31.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/7796"
+  },
+  {
+   "name": "Wiechert U",
+   "lat": -83.43,
+   "lon": 149.041,
+   "diameter_km": 30.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13890"
+  },
+  {
+   "name": "Schomberger A",
+   "lat": -78.608,
+   "lon": 23.525,
+   "diameter_km": 29.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12940"
+  },
+  {
+   "name": "Scott E",
+   "lat": -81.17,
+   "lon": 35.701,
+   "diameter_km": 29.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13015"
+  },
+  {
+   "name": "Drygalski P",
+   "lat": -80.966,
+   "lon": -99.695,
+   "diameter_km": 28.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8838"
+  },
+  {
+   "name": "Idel'son L",
+   "lat": -83.992,
+   "lon": 118.563,
+   "diameter_km": 28.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/10114"
+  },
+  {
+   "name": "Wiechert A",
+   "lat": -82.375,
+   "lon": 168.635,
+   "diameter_km": 26.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13886"
+  },
+  {
+   "name": "Slater",
+   "lat": -88.079,
+   "lon": 111.288,
+   "diameter_km": 25.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/15325"
+  },
+  {
+   "name": "Amundsen C",
+   "lat": -80.759,
+   "lon": 85.212,
+   "diameter_km": 24.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/7236"
+  },
+  {
+   "name": "Hale Q",
+   "lat": -76.466,
+   "lon": 83.934,
+   "diameter_km": 24.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/9686"
+  },
+  {
+   "name": "Kocher",
+   "lat": -84.467,
+   "lon": -134.024,
+   "diameter_km": 24.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14535"
+  },
+  {
+   "name": "Demonax B",
+   "lat": -81.468,
+   "lon": 72.046,
+   "diameter_km": 23.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8719"
+  },
+  {
+   "name": "Drygalski V",
+   "lat": -78.36,
+   "lon": -93.474,
+   "diameter_km": 21.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8840"
+  },
+  {
+   "name": "Burbidge",
+   "lat": -86.35,
+   "lon": 48.6,
+   "diameter_km": 21.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/16250"
+  },
+  {
+   "name": "Shackleton",
+   "lat": -89.67,
+   "lon": 129.78,
+   "diameter_km": 20.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/5450",
+   "evidence": {
+    "kind": "indirect",
+    "summary": "Floor unusually bright at 1064 nm (LOLA), consistent with some surface ice.",
+    "citation": "Zuber et al. 2012, Nature 486, 378-381"
+   }
+  },
+  {
+   "name": "Wiechert E",
+   "lat": -83.563,
+   "lon": 176.017,
+   "diameter_km": 20.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13887"
+  },
+  {
+   "name": "Demonax A",
+   "lat": -79.35,
+   "lon": 65.862,
+   "diameter_km": 20.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8718"
+  },
+  {
+   "name": "Whitaker",
+   "lat": -84.67,
+   "lon": 0.69,
+   "diameter_km": 20.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/16395"
+  },
+  {
+   "name": "De Forest P",
+   "lat": -79.727,
+   "lon": -176.918,
+   "diameter_km": 19.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8616"
+  },
+  {
+   "name": "Malapert E",
+   "lat": -83.94,
+   "lon": 19.829,
+   "diameter_km": 19.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11084"
+  },
+  {
+   "name": "Scott M",
+   "lat": -83.865,
+   "lon": 34.736,
+   "diameter_km": 17.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13016"
+  },
+  {
+   "name": "Simpelius J",
+   "lat": -75.863,
+   "lon": 8.114,
+   "diameter_km": 17.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13105"
+  },
+  {
+   "name": "Schomberger G",
+   "lat": -77.01,
+   "lon": 7.434,
+   "diameter_km": 17.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12944"
+  },
+  {
+   "name": "Cartwright",
+   "lat": -87.65,
+   "lon": -46.95,
+   "diameter_km": 17.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/16416"
+  },
+  {
+   "name": "Haynes",
+   "lat": -88.75,
+   "lon": 167.39,
+   "diameter_km": 17.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/16418"
+  },
+  {
+   "name": "Brill",
+   "lat": -88.27,
+   "lon": -93.41,
+   "diameter_km": 17.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/16195"
+  },
+  {
+   "name": "Stose",
+   "lat": -86.38,
+   "lon": 32.13,
+   "diameter_km": 16.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/16011"
+  },
+  {
+   "name": "Kuhn",
+   "lat": -84.482,
+   "lon": -152.478,
+   "diameter_km": 16.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14536"
+  },
+  {
+   "name": "Newton E",
+   "lat": -79.857,
+   "lon": -37.358,
+   "diameter_km": 16.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11614"
+  },
+  {
+   "name": "Schomberger L",
+   "lat": -80.689,
+   "lon": 17.272,
+   "diameter_km": 16.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12948"
+  },
+  {
+   "name": "Schr\u00f6dinger J",
+   "lat": -78.336,
+   "lon": 155.391,
+   "diameter_km": 16.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12958"
+  },
+  {
+   "name": "Le Gentil B",
+   "lat": -75.477,
+   "lon": -74.05,
+   "diameter_km": 15.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/10686"
+  },
+  {
+   "name": "Schomberger H",
+   "lat": -77.259,
+   "lon": 3.599,
+   "diameter_km": 15.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12945"
+  },
+  {
+   "name": "Svedberg",
+   "lat": -81.681,
+   "lon": 65.151,
+   "diameter_km": 15.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14539"
+  },
+  {
+   "name": "von Baeyer",
+   "lat": -81.801,
+   "lon": 61.874,
+   "diameter_km": 13.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14540"
+  },
+  {
+   "name": "Spudis",
+   "lat": -89.51,
+   "lon": -84.61,
+   "diameter_km": 13.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/16007"
+  },
+  {
+   "name": "Laveran",
+   "lat": -81.799,
+   "lon": -159.784,
+   "diameter_km": 12.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14537"
+  },
+  {
+   "name": "Ibn Bajja",
+   "lat": -86.296,
+   "lon": -75.036,
+   "diameter_km": 12.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14534"
+  },
+  {
+   "name": "Wapowski",
+   "lat": -83.078,
+   "lon": 53.789,
+   "diameter_km": 11.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14541"
+  },
+  {
+   "name": "Malapert F",
+   "lat": -81.526,
+   "lon": 14.726,
+   "diameter_km": 11.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11085"
+  },
+  {
+   "name": "Braude",
+   "lat": -81.82,
+   "lon": 158.88,
+   "diameter_km": 11.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14564"
+  },
+  {
+   "name": "Schomberger F",
+   "lat": -80.176,
+   "lon": 20.167,
+   "diameter_km": 10.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12943"
+  },
+  {
+   "name": "Demonax C",
+   "lat": -80.282,
+   "lon": 56.292,
+   "diameter_km": 10.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8720"
+  },
+  {
+   "name": "Floss",
+   "lat": -84.28,
+   "lon": 42.27,
+   "diameter_km": 9.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/16251"
+  },
+  {
+   "name": "Schomberger K",
+   "lat": -79.282,
+   "lon": 13.557,
+   "diameter_km": 8.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12947"
+  },
+  {
+   "name": "Schomberger X",
+   "lat": -75.129,
+   "lon": 34.414,
+   "diameter_km": 8.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12949"
+  },
+  {
+   "name": "Malinkin",
+   "lat": -87.222,
+   "lon": 75.937,
+   "diameter_km": 8.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/15242"
+  },
+  {
+   "name": "Rozhdestvenskiy",
+   "lat": 84.994,
+   "lon": -157.892,
+   "diameter_km": 181.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/5207"
+  },
+  {
+   "name": "Nansen",
+   "lat": 81.171,
+   "lon": 95.38,
+   "diameter_km": 116.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/4142"
+  },
+  {
+   "name": "Plaskett",
+   "lat": 81.633,
+   "lon": 176.715,
+   "diameter_km": 114.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/4756"
+  },
+  {
+   "name": "Hermite",
+   "lat": 86.166,
+   "lon": -93.315,
+   "diameter_km": 108.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/2471"
+  },
+  {
+   "name": "Byrd",
+   "lat": 85.428,
+   "lon": 10.07,
+   "diameter_km": 97.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/941"
+  },
+  {
+   "name": "Milankovi\u0107",
+   "lat": 76.526,
+   "lon": 171.351,
+   "diameter_km": 94.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/3892"
+  },
+  {
+   "name": "Mouchez",
+   "lat": 78.379,
+   "lon": -26.824,
+   "diameter_km": 82.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/4054"
+  },
+  {
+   "name": "Peary",
+   "lat": 88.625,
+   "lon": 24.402,
+   "diameter_km": 78.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/4627"
+  },
+  {
+   "name": "De Sitter M",
+   "lat": 81.113,
+   "lon": 37.572,
+   "diameter_km": 75.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8642"
+  },
+  {
+   "name": "Rozhdestvenskiy W",
+   "lat": 85.885,
+   "lon": 114.64,
+   "diameter_km": 75.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12726"
+  },
+  {
+   "name": "De Sitter L",
+   "lat": 78.859,
+   "lon": 34.516,
+   "diameter_km": 69.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8641"
+  },
+  {
+   "name": "Florey",
+   "lat": 87.037,
+   "lon": -19.747,
+   "diameter_km": 69.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14527"
+  },
+  {
+   "name": "Poncelet C",
+   "lat": 77.561,
+   "lon": -74.504,
+   "diameter_km": 68.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12221"
+  },
+  {
+   "name": "Poncelet",
+   "lat": 75.909,
+   "lon": -54.572,
+   "diameter_km": 67.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/4793"
+  },
+  {
+   "name": "Haskin",
+   "lat": 81.511,
+   "lon": 133.159,
+   "diameter_km": 66.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14532"
+  },
+  {
+   "name": "Poinsot",
+   "lat": 78.902,
+   "lon": -146.215,
+   "diameter_km": 65.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/4776"
+  },
+  {
+   "name": "De Sitter",
+   "lat": 79.812,
+   "lon": 38.57,
+   "diameter_km": 63.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/1445"
+  },
+  {
+   "name": "Euctemon",
+   "lat": 76.259,
+   "lon": 30.569,
+   "diameter_km": 62.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/1861"
+  },
+  {
+   "name": "Nansen F",
+   "lat": 84.952,
+   "lon": 62.444,
+   "diameter_km": 61.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11535"
+  },
+  {
+   "name": "Sylvester",
+   "lat": 82.649,
+   "lon": -81.218,
+   "diameter_km": 59.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/5791"
+  },
+  {
+   "name": "Lovelace",
+   "lat": 82.08,
+   "lon": -109.51,
+   "diameter_km": 57.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/3488"
+  },
+  {
+   "name": "Haber",
+   "lat": 83.4,
+   "lon": -94.628,
+   "diameter_km": 56.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14530"
+  },
+  {
+   "name": "Froelich",
+   "lat": 80.001,
+   "lon": -111.632,
+   "diameter_km": 56.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/2030"
+  },
+  {
+   "name": "Scoresby M",
+   "lat": 75.574,
+   "lon": 8.155,
+   "diameter_km": 56.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13010"
+  },
+  {
+   "name": "Baillaud A",
+   "lat": 75.605,
+   "lon": 48.277,
+   "diameter_km": 55.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/7485"
+  },
+  {
+   "name": "Bi Sheng",
+   "lat": 78.345,
+   "lon": 148.459,
+   "diameter_km": 55.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14748"
+  },
+  {
+   "name": "Scoresby",
+   "lat": 77.73,
+   "lon": 14.133,
+   "diameter_km": 54.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/5394"
+  },
+  {
+   "name": "Challis",
+   "lat": 79.58,
+   "lon": 9.086,
+   "diameter_km": 53.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/1126"
+  },
+  {
+   "name": "Hevesy",
+   "lat": 83.085,
+   "lon": 149.154,
+   "diameter_km": 50.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14531"
+  },
+  {
+   "name": "Mouchez A",
+   "lat": 80.892,
+   "lon": -30.365,
+   "diameter_km": 49.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11493"
+  },
+  {
+   "name": "Milankovi\u0107 E",
+   "lat": 77.568,
+   "lon": -177.485,
+   "diameter_km": 49.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11412"
+  },
+  {
+   "name": "Brianchon A",
+   "lat": 76.806,
+   "lon": -87.286,
+   "diameter_km": 49.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/7944"
+  },
+  {
+   "name": "Plaskett V",
+   "lat": 82.169,
+   "lon": 120.861,
+   "diameter_km": 49.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12113"
+  },
+  {
+   "name": "Main",
+   "lat": 80.869,
+   "lon": 10.409,
+   "diameter_km": 47.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/3595"
+  },
+  {
+   "name": "Shi Shen",
+   "lat": 75.785,
+   "lon": 104.135,
+   "diameter_km": 46.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/5487"
+  },
+  {
+   "name": "Cai Lun",
+   "lat": 80.117,
+   "lon": 113.664,
+   "diameter_km": 44.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14749"
+  },
+  {
+   "name": "Nansen A",
+   "lat": 82.826,
+   "lon": 65.0,
+   "diameter_km": 44.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11531"
+  },
+  {
+   "name": "Schwarzschild A",
+   "lat": 78.466,
+   "lon": 124.242,
+   "diameter_km": 44.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13002"
+  },
+  {
+   "name": "De Sitter W",
+   "lat": 79.506,
+   "lon": 53.036,
+   "diameter_km": 44.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8645"
+  },
+  {
+   "name": "Rozhdestvenskiy U",
+   "lat": 84.894,
+   "lon": 152.048,
+   "diameter_km": 44.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12725"
+  },
+  {
+   "name": "Meton E",
+   "lat": 75.194,
+   "lon": 15.253,
+   "diameter_km": 43.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11401"
+  },
+  {
+   "name": "Merrill Y",
+   "lat": 76.327,
+   "lon": -117.942,
+   "diameter_km": 43.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11354"
+  },
+  {
+   "name": "Rozhdestvenskiy K",
+   "lat": 82.19,
+   "lon": -147.005,
+   "diameter_km": 42.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12724"
+  },
+  {
+   "name": "Gioja",
+   "lat": 83.347,
+   "lon": 1.76,
+   "diameter_km": 42.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/2171"
+  },
+  {
+   "name": "Scoresby Q",
+   "lat": 77.48,
+   "lon": 8.811,
+   "diameter_km": 38.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13012"
+  },
+  {
+   "name": "Seares Y",
+   "lat": 77.492,
+   "lon": 141.023,
+   "diameter_km": 36.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13018"
+  },
+  {
+   "name": "De Sitter A",
+   "lat": 80.238,
+   "lon": 26.566,
+   "diameter_km": 36.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8638"
+  },
+  {
+   "name": "De Sitter U",
+   "lat": 77.728,
+   "lon": 46.047,
+   "diameter_km": 35.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8643"
+  },
+  {
+   "name": "Byrd C",
+   "lat": 84.352,
+   "lon": 28.34,
+   "diameter_km": 34.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8028"
+  },
+  {
+   "name": "Petermann D",
+   "lat": 77.151,
+   "lon": 66.521,
+   "diameter_km": 33.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11919"
+  },
+  {
+   "name": "Nansen C",
+   "lat": 83.442,
+   "lon": 55.421,
+   "diameter_km": 33.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11532"
+  },
+  {
+   "name": "Challis A",
+   "lat": 77.274,
+   "lon": 1.976,
+   "diameter_km": 31.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8237"
+  },
+  {
+   "name": "Houssay",
+   "lat": 83.115,
+   "lon": 98.523,
+   "diameter_km": 31.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14533"
+  },
+  {
+   "name": "Poncelet A",
+   "lat": 79.575,
+   "lon": -75.581,
+   "diameter_km": 31.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12219"
+  },
+  {
+   "name": "Poinsot E",
+   "lat": 79.769,
+   "lon": -131.435,
+   "diameter_km": 30.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14126"
+  },
+  {
+   "name": "Froelich M",
+   "lat": 77.32,
+   "lon": -110.871,
+   "diameter_km": 30.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/9251"
+  },
+  {
+   "name": "Brianchon T",
+   "lat": 75.277,
+   "lon": -99.312,
+   "diameter_km": 29.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/7946"
+  },
+  {
+   "name": "Heymans D",
+   "lat": 76.3,
+   "lon": -133.194,
+   "diameter_km": 28.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/9966"
+  },
+  {
+   "name": "Poinsot P",
+   "lat": 76.639,
+   "lon": -149.945,
+   "diameter_km": 28.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12174"
+  },
+  {
+   "name": "Merrill X",
+   "lat": 76.699,
+   "lon": -120.671,
+   "diameter_km": 27.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11353"
+  },
+  {
+   "name": "Pascal F",
+   "lat": 75.662,
+   "lon": -76.206,
+   "diameter_km": 27.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11847"
+  },
+  {
+   "name": "Seares B",
+   "lat": 75.178,
+   "lon": 151.339,
+   "diameter_km": 26.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13017"
+  },
+  {
+   "name": "Byrd D",
+   "lat": 85.522,
+   "lon": 33.413,
+   "diameter_km": 24.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8029"
+  },
+  {
+   "name": "Scoresby P",
+   "lat": 75.889,
+   "lon": 12.781,
+   "diameter_km": 23.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13011"
+  },
+  {
+   "name": "De Sitter F",
+   "lat": 80.034,
+   "lon": 49.796,
+   "diameter_km": 22.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8639"
+  },
+  {
+   "name": "Poncelet D",
+   "lat": 77.768,
+   "lon": -70.831,
+   "diameter_km": 22.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12222"
+  },
+  {
+   "name": "Scoresby K",
+   "lat": 76.353,
+   "lon": 2.947,
+   "diameter_km": 22.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13009"
+  },
+  {
+   "name": "Thiessen W",
+   "lat": 75.8,
+   "lon": -172.906,
+   "diameter_km": 22.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13469"
+  },
+  {
+   "name": "Lovelace E",
+   "lat": 82.039,
+   "lon": -96.784,
+   "diameter_km": 21.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/10944"
+  },
+  {
+   "name": "Nansen D",
+   "lat": 83.876,
+   "lon": 65.81,
+   "diameter_km": 21.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11533"
+  },
+  {
+   "name": "Fibiger",
+   "lat": 86.14,
+   "lon": 37.133,
+   "diameter_km": 21.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14526"
+  },
+  {
+   "name": "Rozhdestvenskiy H",
+   "lat": 83.278,
+   "lon": -133.102,
+   "diameter_km": 20.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12723"
+  },
+  {
+   "name": "Sylvester N",
+   "lat": 82.41,
+   "lon": -68.679,
+   "diameter_km": 20.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/13350"
+  },
+  {
+   "name": "Euctemon D",
+   "lat": 77.035,
+   "lon": 38.701,
+   "diameter_km": 19.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/9003"
+  },
+  {
+   "name": "Hermite A",
+   "lat": 87.94,
+   "lon": -51.022,
+   "diameter_km": 19.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/9915"
+  },
+  {
+   "name": "Plaskett H",
+   "lat": 79.606,
+   "lon": -164.806,
+   "diameter_km": 19.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12110"
+  },
+  {
+   "name": "Euctemon C",
+   "lat": 76.098,
+   "lon": 38.677,
+   "diameter_km": 19.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/9002"
+  },
+  {
+   "name": "Bosch",
+   "lat": 86.818,
+   "lon": 133.543,
+   "diameter_km": 19.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14524"
+  },
+  {
+   "name": "Mouchez L",
+   "lat": 78.712,
+   "lon": -40.784,
+   "diameter_km": 19.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11497"
+  },
+  {
+   "name": "De Sitter V",
+   "lat": 79.063,
+   "lon": 56.468,
+   "diameter_km": 19.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8644"
+  },
+  {
+   "name": "Baillaud F",
+   "lat": 75.618,
+   "lon": 53.025,
+   "diameter_km": 18.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/7490"
+  },
+  {
+   "name": "Mouchez M",
+   "lat": 80.259,
+   "lon": -50.13,
+   "diameter_km": 17.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11498"
+  },
+  {
+   "name": "Mouchez J",
+   "lat": 79.525,
+   "lon": -38.592,
+   "diameter_km": 17.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11496"
+  },
+  {
+   "name": "Plaskett S",
+   "lat": 80.99,
+   "lon": 150.569,
+   "diameter_km": 16.8,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12111"
+  },
+  {
+   "name": "Aepinus",
+   "lat": 87.958,
+   "lon": -109.687,
+   "diameter_km": 16.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14523"
+  },
+  {
+   "name": "Poncelet P",
+   "lat": 80.681,
+   "lon": -61.749,
+   "diameter_km": 16.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12224"
+  },
+  {
+   "name": "Philolaus W",
+   "lat": 75.723,
+   "lon": -36.089,
+   "diameter_km": 16.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11949"
+  },
+  {
+   "name": "Poinsot K",
+   "lat": 77.055,
+   "lon": -142.377,
+   "diameter_km": 16.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12173"
+  },
+  {
+   "name": "Euctemon H",
+   "lat": 76.161,
+   "lon": 26.207,
+   "diameter_km": 15.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/9004"
+  },
+  {
+   "name": "Plaskett U",
+   "lat": 82.411,
+   "lon": 162.282,
+   "diameter_km": 15.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12112"
+  },
+  {
+   "name": "Nansen U",
+   "lat": 81.538,
+   "lon": 82.603,
+   "diameter_km": 15.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11536"
+  },
+  {
+   "name": "Nansen E",
+   "lat": 83.363,
+   "lon": 72.702,
+   "diameter_km": 15.1,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11534"
+  },
+  {
+   "name": "Poncelet B",
+   "lat": 78.348,
+   "lon": -63.558,
+   "diameter_km": 15.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12220"
+  },
+  {
+   "name": "Whipple",
+   "lat": 89.137,
+   "lon": 120.019,
+   "diameter_km": 14.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14566"
+  },
+  {
+   "name": "Goldschmidt D",
+   "lat": 75.396,
+   "lon": -7.74,
+   "diameter_km": 14.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/9525"
+  },
+  {
+   "name": "Main L",
+   "lat": 81.438,
+   "lon": 22.731,
+   "diameter_km": 14.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11066"
+  },
+  {
+   "name": "Poncelet Q",
+   "lat": 79.93,
+   "lon": -60.579,
+   "diameter_km": 14.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12225"
+  },
+  {
+   "name": "Hinshelwood",
+   "lat": 89.409,
+   "lon": -51.888,
+   "diameter_km": 13.3,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14565"
+  },
+  {
+   "name": "Grignard",
+   "lat": 84.535,
+   "lon": -75.834,
+   "diameter_km": 13.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14529"
+  },
+  {
+   "name": "Mouchez C",
+   "lat": 77.418,
+   "lon": -26.124,
+   "diameter_km": 12.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11495"
+  },
+  {
+   "name": "Philolaus U",
+   "lat": 75.139,
+   "lon": -33.207,
+   "diameter_km": 12.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11948"
+  },
+  {
+   "name": "Petermann Y",
+   "lat": 75.709,
+   "lon": 85.694,
+   "diameter_km": 12.2,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11924"
+  },
+  {
+   "name": "Main N",
+   "lat": 82.358,
+   "lon": 22.131,
+   "diameter_km": 11.6,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11067"
+  },
+  {
+   "name": "De Sitter X",
+   "lat": 80.176,
+   "lon": 54.121,
+   "diameter_km": 11.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8646"
+  },
+  {
+   "name": "Erlanger",
+   "lat": 86.988,
+   "lon": 28.617,
+   "diameter_km": 10.9,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14525"
+  },
+  {
+   "name": "Poncelet S",
+   "lat": 78.722,
+   "lon": -56.961,
+   "diameter_km": 10.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12227"
+  },
+  {
+   "name": "De Sitter G",
+   "lat": 78.778,
+   "lon": 42.004,
+   "diameter_km": 9.7,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/8640"
+  },
+  {
+   "name": "Petermann S",
+   "lat": 75.294,
+   "lon": 62.036,
+   "diameter_km": 9.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11922"
+  },
+  {
+   "name": "Poncelet R",
+   "lat": 79.331,
+   "lon": -58.092,
+   "diameter_km": 9.5,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/12226"
+  },
+  {
+   "name": "Gore",
+   "lat": 86.176,
+   "lon": -62.311,
+   "diameter_km": 9.4,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/14528"
+  },
+  {
+   "name": "Euctemon N",
+   "lat": 75.414,
+   "lon": 32.951,
+   "diameter_km": 9.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/9006"
+  },
+  {
+   "name": "Petermann X",
+   "lat": 75.018,
+   "lon": 76.103,
+   "diameter_km": 9.0,
+   "link": "http://planetarynames.wr.usgs.gov/Feature/11923"
+  }
+ ]
+}

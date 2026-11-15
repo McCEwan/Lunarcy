@@ -41,8 +41,8 @@ export async function open3dView(opts) {
 }
 
 class SiteView {
-  constructor({ title, lat, lon, result, landed, level = 'global', initialT = 0, onRequestDetail = null }) {
-    Object.assign(this, { title, lat, lon, result, landed, level, onRequestDetail });
+  constructor({ title, lat, lon, result, landed, level = 'global', initialT = 0, onPlan = null }) {
+    Object.assign(this, { title, lat, lon, result, landed, level, onPlan });
     this.series = result.sky;
     this.sunPerM2 = result.power_w.map((p) => p.w_m2);   // sunlight on a flat panel, W/m²
     this.t = Math.min(initialT, this.series.length - 1);   // fractional index into the hourly series
@@ -68,10 +68,6 @@ class SiteView {
     document.getElementById('v3d-level').innerHTML = detailed
       ? '<span class="badge pass">Detailed terrain</span>'
       : '<span class="badge level">Global estimate</span>';
-    const detailBtn = document.getElementById('v3d-detail');
-    detailBtn.hidden = detailed || !this.onRequestDetail;
-    detailBtn.disabled = false;
-    detailBtn.textContent = 'Get detailed terrain';
 
     const q = `lat=${this.lat}&lon=${this.lon}&level=${this.level}`;
     const n = detailed ? 2 * PATCH_N - 1 : PATCH_N;   // ~39 m vertices for detailed data
@@ -99,7 +95,202 @@ class SiteView {
 
     this.update();
     this.loop();
+    this.loadPlan();       // solar array, comms hub, routes, ice: drawn when it arrives
   }
+
+  // ---- Site plan (GET /site/plan, api/siteplan.py) --------------------------------------
+
+  async loadPlan() {
+    const p = this.result.period;
+    const q = new URLSearchParams({ lat: this.lat, lon: this.lon, level: this.level });
+    if (p?.start) {
+      q.set('start', p.start.slice(0, 10));
+      // Placement needs at least half a month of Sun and Earth motion; shorter periods use a lunar day.
+      if ((Date.parse(p.end) - Date.parse(p.start)) / 864e5 >= 14) {
+        q.set('end', new Date(Date.parse(p.end) - 864e5).toISOString().slice(0, 10));
+      }
+    }
+    this.renderPlanPanel(null, 'Planning the solar array, comms hub and routes…');
+    try {
+      const res = await fetch(`/site/plan?${q}`);
+      const plan = await res.json();
+      if (!res.ok) throw new Error(typeof plan.detail === 'string' ? plan.detail : `HTTP ${res.status}`);
+      if (active !== this) return;
+      this.plan = plan;
+      this.buildPlan(plan);
+      this.renderPlanPanel(plan);
+      this.onPlan?.(plan);
+    } catch (err) {
+      if (active === this) this.renderPlanPanel(null, `Site plan failed: ${err.message}`);
+    }
+  }
+
+  // Terrain height (scene y) at local east/north metres: bilinear on the patch, with curvature.
+  heightAt(e, n) {
+    const { n: N, size_m: size } = this.patch;
+    const sp = size / (N - 1);
+    const fx = Math.min(Math.max((e + size / 2) / sp, 0), N - 1.001);
+    const fy = Math.min(Math.max((size / 2 - n) / sp, 0), N - 1.001);
+    const c0 = Math.floor(fx), r0 = Math.floor(fy), tx = fx - c0, ty = fy - r0;
+    const H = (r, c) => this.baseHeights[r * N + c];
+    const h = (H(r0, c0) * (1 - tx) + H(r0, c0 + 1) * tx) * (1 - ty) + (H(r0 + 1, c0) * (1 - tx) + H(r0 + 1, c0 + 1) * tx) * ty;
+    return h * this.exaggeration - (e * e + n * n) / (2 * MOON_R);
+  }
+
+  buildPlan(plan) {
+    const g = new THREE.Group();
+    this.planGroup = g;
+    this.scene.add(g);
+    const half = this.patch.size_m / 2;
+    const v = (e, n, lift) => new THREE.Vector3(e, this.heightAt(e, n) + lift, -n);
+    const fmtKm = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+
+    const marker = (e, n, color, label, poleH) => {
+      const m = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(28, 28, poleH, 10), new THREE.MeshBasicMaterial({ color }));
+      pole.position.y = poleH / 2;
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(90, 16, 12), new THREE.MeshBasicMaterial({ color }));
+      cap.position.y = poleH;
+      const tag = textSprite(label, color, 520);
+      tag.position.y = poleH + 380;
+      m.add(pole, cap, tag);
+      m.position.copy(v(e, n, 0));
+      g.add(m);
+    };
+    // A route as a tube draped over the terrain (lifted so it doesn't sink between samples).
+    const tube = (pts, color, radius = 22) => {
+      if (pts.length < 2) return null;
+      const curve = new THREE.CatmullRomCurve3(pts.map(([e, n]) => v(e, n, 14)));
+      const mesh = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, Math.min(pts.length * 6, 1200), radius, 8, false),
+        new THREE.MeshBasicMaterial({ color }),
+      );
+      g.add(mesh);
+      return curve;
+    };
+    // A dashed straight line on the ground (for "as the crow flies" legs).
+    const dashed = (e0, n0, e1, n1, color) => {
+      const steps = Math.max(2, Math.ceil(Math.hypot(e1 - e0, n1 - n0) / 80));
+      const pts = Array.from({ length: steps + 1 }, (_, i) => {
+        const t = i / steps;
+        return v(e0 + (e1 - e0) * t, n0 + (n1 - n0) * t, 30);
+      });
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineDashedMaterial({ color, dashSize: 260, gapSize: 160 }));
+      line.computeLineDistances();
+      g.add(line);
+    };
+    const label = (pos, text, color, size = 420) => {
+      const t = textSprite(text, color, size);
+      t.position.copy(pos).add(new THREE.Vector3(0, 320, 0));
+      g.add(t);
+    };
+
+    const { solar, comms, route, ice } = plan;
+    const same = route?.same_spot;
+    marker(solar.east_m, solar.north_m, '#ffd23f', same ? `Solar + comms${comms.tower ? ` · tower ${comms.tower.realistic_m} m (ideal ${comms.tower.ideal_m} m)` : ''}` : 'Solar array', 1500);
+    const tw = comms.tower;
+    const towerTxt = tw ? ` · tower ${tw.realistic_m} m (ideal ${tw.ideal_m} m)` : '';
+    if (!same) marker(comms.east_m, comms.north_m, '#c39bff', `Comms hub${towerTxt}`, 2300);
+    if (route && route.points.length > 1) {
+      const curve = tube(route.points, '#ffffff');
+      label(curve.getPoint(0.5), `${fmtKm(route.drive_m)} drive`, '#ffffff');
+    }
+
+    if (ice) {
+      const iceName = ice.name ? `${ice.name}` : 'Ice candidate';
+      if (ice.in_view) {
+        let fromE = 0, fromN = 0;
+        if (ice.route?.points.length > 1) {
+          const curve = tube(ice.route.points, '#7fd0ff', 18);
+          label(curve.getPoint(0.5), `${fmtKm(ice.route.drive_m)}`, '#7fd0ff', 380);
+          [fromE, fromN] = ice.route.points.at(-1);
+        }
+        dashed(fromE, fromN, ice.east_m, ice.north_m, 0x7fd0ff);
+        marker(ice.east_m, ice.north_m, '#7fd0ff', `${iceName} · ${fmtKm(ice.distance_m)}`, 700);
+      } else {
+        // Off the 20 km patch: a dashed line to the edge, an arrow, and the distance.
+        const b = ice.bearing_deg * D2R, dx = Math.sin(b), dy = Math.cos(b);
+        const L = (half * 0.96) / Math.max(Math.abs(dx), Math.abs(dy));
+        dashed(0, 0, dx * L, dy * L, 0x7fd0ff);
+        const tip = v(dx * L, dy * L, 60);
+        const arrow = new THREE.Mesh(new THREE.ConeGeometry(160, 480, 16), new THREE.MeshBasicMaterial({ color: 0x7fd0ff }));
+        arrow.position.copy(tip);
+        arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, 0, -dy));
+        g.add(arrow);
+        label(tip, `${iceName} → ${fmtKm(ice.distance_m)}`, '#7fd0ff', 480);
+      }
+    }
+    g.visible = this.view === 'overview' && document.getElementById('v3d-plan-toggle').classList.contains('on');
+  }
+
+  renderPlanPanel(plan, message = '') {
+    const el = document.getElementById('v3d-plan');
+    el.hidden = !document.getElementById('v3d-plan-toggle').classList.contains('on');
+    if (!plan) { el.innerHTML = `<h3>Site plan</h3><div class="small muted">${message}</div>`; return; }
+    const km = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+    const compass = (deg) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+    const attr = (t) => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const info = (tip) => ` <span class="info-i" data-tip="${attr(tip)}" tabindex="0">i</span>`;
+    const { solar, comms, route, ice, grid } = plan;
+    const fromLander = (s) => (s.drive_from_lander_m ? `${km(s.drive_from_lander_m)} drive from the lander` : 'at the lander');
+    const days = plan.period ? `${plan.period.days} days from ${plan.period.start.slice(0, 10)}` : 'the period';
+    const rough = grid.rough ? ` On the ~${Math.round(grid.resolution_m)} m global terrain this is a rough estimate.` : '';
+
+    // Why each recommendation was made.
+    const pickWhy = (s, body, pct, what) =>
+      `Why here: we looked at ${s.why?.candidates ?? 'all'} spots within 5 km where the ground is no steeper than 10° ` +
+      `and a rover can drive to (ground ≤15° all the way). For each we traced the real terrain skyline (NASA LOLA, out to 150 km) as seen from the top of a ` +
+      `${s.mast_m} m mast, and counted the hours the ${body} is above it over ${days} (JPL Horizons positions). ` +
+      `This spot ${what} ${pct}% of the time` +
+      (s.why ? `, against ${s.why.lander_pct}% at the lander itself.` : '.') +
+      ` Close calls go to the shorter drive (0.3 points per km).${rough}`;
+    const solarWhy = pickWhy(solar, 'Sun', solar.sunlight_pct, 'is in sunlight');
+    const commsWhy = pickWhy(comms, 'Earth', comms.earth_pct, 'can see Earth') +
+      ' Seeing Earth means direct radio contact without a relay satellite.';
+    const routeWhy = route?.same_spot
+      ? 'The best solar and comms spots are the same place, so one mast can carry both.'
+      : route
+        ? `Why this path: it is the cheapest safe drive between the two spots. Ground steeper than 15° in any direction ` +
+          `is off-limits (NASA's VIPER rover "can generally drive on slopes up to 15°"; driving across a steeper hillside ` +
+          `risks tipping), and each step costs more the steeper it is, so gentle ground wins. The drive is ` +
+          `${km(route.drive_m)} against ${km(route.straight_m)} in a straight line; the difference is the detour around ` +
+          `steeper ground. Its steepest step is ${route.max_slope_deg}°.${rough}`
+        : 'No path connects the two spots without crossing ground steeper than 15°.';
+    const towerWhy = comms.tower
+      ? `Why these heights: a taller antenna sees over nearby rims, so we repeated the Earth count at the comms spot for ` +
+        `towers from 2 m to 500 m. Ideal = the lowest tower that gets within 1 point of the best result ` +
+        `(${comms.tower.ideal_m} m → ${comms.tower.ideal_earth_pct}%). Realistic = the best up to 20 m, our estimate of ` +
+        `what a small lander could deploy (${comms.tower.realistic_m} m → ${comms.tower.realistic_earth_pct}%). ` +
+        `${comms.tower.reference}.`
+      : '';
+    let iceRow = '<div class="row k-ice">No ice candidate found</div>';
+    if (ice) {
+      const what = ice.name ? `<b>${ice.name}</b> (${ice.rating === 'known' ? 'published ice evidence' : 'likely cold trap'})` : '<b>a cold-trap cell</b>';
+      const drive = ice.route
+        ? `<br>Drive ${km(ice.route.drive_m)} to within ${km(ice.route.gap_to_ice_m)} of it (the rest is too steep at ≤15°).`
+        : ice.in_view ? '<br>No drivable way in at ≤15° from here.' : '<br>Beyond the 20 km terrain patch (arrow at the edge; full line on the globe).';
+      const iceWhy = `Why this target: water ice can last only where the surface never gets warmer than about −163 °C, ` +
+        `which on the Moon means crater floors the Sun never reaches. Our ice map marks those from NASA LOLA terrain ` +
+        `(the Sun can never rise above the rim) and LRO Diviner temperatures, plus craters where ice has actually been ` +
+        `reported. This is the nearest of them to the lander. ${ice.basis}. The drive stops where ground gets steeper ` +
+        `than 15°; crater walls usually are.`;
+      iceRow = `<div class="row"><span class="k-ice">Nearest ice:</span>${info(iceWhy)} ${what}, ${km(ice.distance_m)} ${compass(ice.bearing_deg)} as the crow flies.${drive}</div>`;
+    }
+    el.innerHTML = `<h3>Site plan</h3>
+      <div class="row"><span class="k-solar">Solar array:</span>${info(solarWhy)} <b>${solar.sunlight_pct}%</b> sunlight · ${fromLander(solar)} · slope ${solar.slope_deg}°</div>
+      <div class="row"><span class="k-comms">Comms hub:</span>${info(commsWhy)} <b>${comms.earth_pct}%</b> Earth in view · ${fromLander(comms)} · slope ${comms.slope_deg}°</div>
+      <div class="row"><span class="k-route">Route between them:</span>${info(routeWhy)} ${route
+        ? (route.same_spot ? 'same spot: one mast does both.' : `<b>${km(route.drive_m)}</b> drive (${km(route.straight_m)} straight), steepest ${route.max_slope_deg}°`)
+        : '<span class="rough">no drivable route at ≤15°</span>'}</div>
+      ${comms.tower ? `<div class="row"><span class="k-comms">Comms tower:</span>${info(towerWhy)}
+        realistic <b>${comms.tower.realistic_m} m</b> → ${comms.tower.realistic_earth_pct}% Earth in view ·
+        ideal <b>${comms.tower.ideal_m} m</b> → ${comms.tower.ideal_earth_pct}%${comms.tower.beyond_concepts ? ' <span class="rough">(taller than current tower concepts, ~100–200 m)</span>' : ''}</div>` : ''}
+      ${iceRow}
+      <div class="small muted">Hover <span class="info-i">i</span> for why each was chosen.</div>
+      ${grid.rough ? `<div class="small rough">Global terrain (~${Math.round(grid.resolution_m)} m): spots and routes are a rough estimate.</div>` : ''}`;
+  }
+
 
   buildRenderer() {
     const host = document.getElementById('v3d-canvas');
@@ -150,7 +341,7 @@ class SiteView {
       new THREE.MeshBasicMaterial({ color: 0xff8c42 }),
     );
     pin.position.y = 200;
-    const tag = textSprite('Landing site', '#ffb37a', 900);
+    const tag = textSprite('Landing site', '#ffb37a', 620);
     tag.position.y = 650;
     this.marker.add(pin, tag);
     this.scene.add(this.marker);
@@ -276,14 +467,13 @@ class SiteView {
     on($('v3d-speed'), 'change', (e) => { this.speed = Number(e.target.value); });
     on(scrub, 'input', (e) => { this.t = Number(e.target.value); this.update(); });
     on($('v3d-close'), 'click', () => this.close());
-    on($('v3d-detail'), 'click', (e) => {
-      if (!this.onRequestDetail) return;
-      e.target.disabled = true;
-      e.target.textContent = 'Downloading detailed LOLA terrain…';
-      this.playing = false;
-      this.onRequestDetail(this.t);   // the app re-evaluates and reopens this view at the same moment
-    });
     on($('v3d-views'), 'click', (e) => { const v = e.target.dataset?.view; if (v) this.setView(v); });
+    on($('v3d-plan-toggle'), 'click', (e) => {
+      const on = !e.currentTarget.classList.contains('on');
+      e.currentTarget.classList.toggle('on', on);
+      if (this.planGroup) this.planGroup.visible = on && this.view === 'overview';
+      document.getElementById('v3d-plan').hidden = !on;
+    });
     on(document, 'keydown', (e) => {
       if (this.el.hidden) return;
       if (e.key === 'Escape') this.close();
@@ -304,6 +494,8 @@ class SiteView {
     document.querySelectorAll('#v3d-views [data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === view));
     const size = this.patch.size_m;
     this.marker.visible = view === 'overview';
+    // The plan's tall markers only make sense from above.
+    if (this.planGroup) this.planGroup.visible = view === 'overview' && document.getElementById('v3d-plan-toggle').classList.contains('on');
     if (view === 'overview') {
       this.camera.near = 10;
       this.camera.position.set(size * 0.55, size * 0.4, size * 0.55);   // above the south-east corner
@@ -427,14 +619,14 @@ class SiteView {
       <div class="big">${when} UTC</div>
       <div class="muted">${this.landed ? 'T+' : 'Start +'}${days} d ${hours} h${this.landed ? ' since landing' : ''}</div>
       <hr>
-      <div>☀️ Sun <b>${s.sunEl.toFixed(1)}°</b> el · ${s.sunAz.toFixed(0)}° az ${sunBlocked ? '<span class="warn">behind terrain</span>' : ''}</div>
+      <div>Sun <b>${s.sunEl.toFixed(1)}°</b> el · ${s.sunAz.toFixed(0)}° az ${sunBlocked ? '<span class="warn">behind terrain</span>' : ''}</div>
       <div class="muted">${sunEvent}</div>
-      <div>🌍 Earth <b>${s.earthEl.toFixed(1)}°</b> el · ${s.earthAz.toFixed(0)}° az ${earthBlocked ? '<span class="warn">behind terrain</span>' : ''}</div>
+      <div>Earth <b>${s.earthEl.toFixed(1)}°</b> el · ${s.earthAz.toFixed(0)}° az ${earthBlocked ? '<span class="warn">behind terrain</span>' : ''}</div>
       <div class="muted">${earthEvent} · ${(earthLit * 100).toFixed(0)}% lit</div>
       <hr>
-      <div>⚡ Sunlight on panel <b>${sunBlocked ? 0 : s.sunPerM2.toFixed(0)} W/m²</b>${sunBlocked ? ' <span class="muted">(terrain shadow)</span>' : ''}</div>
-      <div>📡 Direct-to-Earth comms <b class="${earthUp ? 'ok' : 'warn'}">${earthUp ? 'available' : 'none'}</b></div>
-      <div>${sunUp ? '🌞 Daylight' : '🌑 Dark'}</div>`;
+      <div>Sunlight on panel <b>${sunBlocked ? 0 : s.sunPerM2.toFixed(0)} W/m²</b>${sunBlocked ? ' <span class="muted">(terrain shadow)</span>' : ''}</div>
+      <div>Direct-to-Earth comms <b class="${earthUp ? 'ok' : 'warn'}">${earthUp ? 'available' : 'none'}</b></div>
+      <div>${sunUp ? 'Daylight' : 'Dark'}</div>`;
   }
 
   setNote(text) {
@@ -454,6 +646,7 @@ class SiteView {
       this.renderer.domElement.remove();
     }
     this.el.hidden = true;
+    document.getElementById('v3d-plan').hidden = true;
     document.getElementById('v3d-play').textContent = '▶ Play';
     if (active === this) active = null;
   }

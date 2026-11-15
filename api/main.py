@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,11 @@ from .ephemeris import AnalyticEphemeris, HorizonsEphemeris
 from .evaluator import evaluate
 from .lola import DetailedHeights, DetailStore, LolaGlobalHeights
 from .finder import Criteria, Skylines, find_regions
+from .ice import IceMap
+from .siteplan import plan_site
+from .scenarios import PRIORITIES, best_dates, nearby
+from . import ephemeris
+from .evaluator import LUNAR_DAY_DAYS
 from .models import EvaluateRequest, EvaluateResponse, FindRequest
 from .patch import SyntheticHeights, horizon_profile, terrain_patch
 from .paths import PROJECT_DATA, big_data_dir, lola_detail_dir, lola_dir
@@ -168,12 +174,108 @@ def finder_skylines() -> Skylines:
     return _skylines
 
 
+_ice_map: IceMap | None = None
+
+
+def ice_map() -> IceMap:
+    """Cold traps and rated polar craters (api/ice.py), built on first use (~5-10 s)."""
+    global _ice_map
+    if _ice_map is None:
+        _ice_map = IceMap(GLOBAL_HEIGHTS, finder_skylines(), TERRAIN)
+    return _ice_map
+
+
+@app.get("/ice")
+def ice() -> dict:
+    """Where water ice could survive: cold-trap grid and rated named polar craters."""
+    out = ice_map().to_dict()
+    if isinstance(GLOBAL_HEIGHTS, SyntheticHeights) or not TERRAIN.real:
+        out["sources"].append("PLACEHOLDER: synthetic terrain or placeholder temperatures in use; "
+                              "crater depths, shadows and cold traps are not real")
+    return out
+
+
+def _site_sky(lat: float, lon: float, start: date | None, end: date | None, level: str = "global",
+              default_days: float = LUNAR_DAY_DAYS):
+    """The site's height source and one hourly Sun/Earth series (start..end inclusive, or
+    `default_days` from start/today). Shared by the /site/* endpoints."""
+    if end and start and end < start:
+        raise HTTPException(422, detail="end must not be before start")
+    first = start or datetime.now(timezone.utc).date()
+    days = (end - first).days + 1 if end else default_days
+    heights = heights_for(lat, lon, level)
+    site_alt = float(heights.heights(np.array(lat), np.array(lon)))
+    times = ephemeris.time_grid(first, days, 1.0)
+    return first, days, heights, EPHEM.sky(lat, lon, times, alt_m=site_alt), times
+
+
+@app.get("/site/dates")
+def site_dates(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+    start: date | None = None,
+    days: int = Query(60, ge=1, le=366),
+    mission_days: float = Query(14, ge=1, le=60),
+    priority: str = Query("both", pattern="^(both|sun|comms)$"),
+) -> dict:
+    """Best touchdown dates at one site: every hour over `days` from `start` is scored on the
+    following `mission_days` (Sun, Earth and both above the real terrain skyline)."""
+    first = start or datetime.now(timezone.utc).date()
+    span = days + math.ceil(mission_days) + 1
+    _, _, heights, sky, times = _site_sky(lat, lon, first, None, "global", default_days=span)
+    skyline = horizon_profile(heights, lat, lon)["elevation_deg"]
+    out = best_dates(sky, skyline, times, first, days, mission_days, priority)
+    out["sources"] = [sky.source, heights.source]
+    return out
+
+
+@app.get("/site/nearby")
+def site_nearby(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+    start: date | None = None,
+    end: date | None = None,
+    radius_km: float = Query(3.0, ge=0.5, le=15),
+) -> dict:
+    """How sunlight and Earth contact change within a few km of a site (same dates)."""
+    first, days, heights, sky, _ = _site_sky(lat, lon, start, end, "global")
+    out = nearby(heights, lat, lon, sky, radius_m=radius_km * 1000)
+    out["period"] = {"start": f"{first}T00:00Z", "days": round(days, 2)}
+    out["sources"] = [sky.source, heights.source]
+    return out
+
+
+@app.get("/site/plan")
+def site_plan(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+    start: date | None = None,
+    end: date | None = None,
+    level: str = Query("global", pattern="^(global|detailed)$"),
+) -> dict:
+    """Solar array and comms hub spots near a landing site, the drivable route between them,
+    and the way to the nearest ice candidate (api/siteplan.py). Period: start..end (UTC dates,
+    inclusive), default the next lunar day."""
+    first, days, heights, sky, _ = _site_sky(lat, lon, start, end, level)
+    try:
+        ice_src = ice_map()
+    except Exception:
+        log.exception("Ice map unavailable for the site plan")
+        ice_src = None
+    out = plan_site(heights, lat, lon, sky, ice_src, level=level)
+    out["period"] = {"start": f"{first}T00:00Z", "days": round(days, 2)}
+    if isinstance(heights, SyntheticHeights) or (ice_src is not None and not TERRAIN.real):
+        out["sources"].append("PLACEHOLDER data in use: the plan is not based on real terrain/temperatures")
+    return out
+
+
 @app.post("/find")
 def find(req: FindRequest) -> dict:
     """Search the whole Moon for regions meeting the mission requirements (api/finder.py)."""
     crit = Criteria(req.period_start, req.period_end, req.min_sun_pct, req.min_earth_pct,
-                    req.min_avg_w_m2, req.max_slope_deg, req.region)
-    return find_regions(crit, EPHEM, GLOBAL_HEIGHTS, finder_skylines())
+                    req.min_avg_w_m2, req.max_slope_deg, req.region, req.goal, req.max_ice_km)
+    return find_regions(crit, EPHEM, GLOBAL_HEIGHTS, finder_skylines(),
+                        ice=ice_map() if req.goal == "ice_craters" else None)
 
 
 @app.post("/evaluate", response_model=EvaluateResponse, response_model_by_alias=True)

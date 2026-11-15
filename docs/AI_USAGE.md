@@ -196,7 +196,179 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the opening animation was only checked at desktop size; on phones the panel covers the lower half of the screen.
 
-### 2026-11-15 · Session 10: pitch deck (branch `docs/pitch-deck`)
+### 2026-11-15 · Session 10: macOS local setup and Horizons SSL fix
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app
+- **Prompted with:** "can you help me get the local host running with the code as is now", then "Yes, fix it" for the Horizons certificate error.
+- **What the AI did:** created `.venv` and installed requirements on macOS; changed `.claude/launch.json` from the Windows interpreter path to `.venv/bin/python`. Found that every Horizons call failed with `CERTIFICATE_VERIFY_FAILED` because the python.org macOS Python has no root certificates, so the app was quietly using the APPROXIMATE analytic ephemeris. Added `certifi` to `requirements.txt` and a global HTTPS opener using certifi's CA bundle in `api/__init__.py`. It also covers `api/lola.py` and the fetch scripts that import `api`.
+- **Checks the AI ran on its own output:** inspected the server's certificate chain with openssl (genuine Entrust/Sectigo chain, no proxy). After the restart, `/sky/subpoints` reports the Horizons source and the server logs no fallback warning. `python -m pytest`: 78 passed, 4 skipped.
+- **What a human checked:** _[fill in]_
+- **Follow-up (same session):** downloaded LOLA LDEM_128 (2,123 MB) with `scripts/fetch_lola.py` to `~/LunarPlannerData/lola/`. After a restart `/health` reports the LDEM_128 source, the Apollo 11 skyline comes from real terrain, and pytest gives 79 passed, 3 skipped (one LOLA test no longer skips).
+- **Second follow-up:** built the Diviner temperature grids with `scripts/fetch_diviner.py` (2.7 min, 100% of cells have data, 1.6 MB file). `/health` now reports `temperature_loaded: true`. Apollo 11 reads 95 K / 395 K, matching the earlier session; the Shackleton rim reads 80 K / 252 K.
+- **Third follow-up:** built the finder skylines with `scripts/build_skylines.py` (2.0 min, 48 MB, 259,200 cells). A south-pole `/find` query for December 2026 (≥60% Sun, ≥50% Earth) now reports `precomputed_skylines: true` in 6.9 s and returns 3 regions. The top one, near 85.25°S 36.75°E, still passes after its terrain re-check (79.6% Sun, 66.4% Earth).
+- **Still unverified / known limits:** the finder regions were not compared against published polar illumination studies. `scripts/fetch_moontrek_layers.py` does not import `api`, so it does not get the fix (its images are already in the repo).
+
+### 2026-11-15 · Session 11: "Check for ice in deep craters" goal; 3D view cleanup
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** remove "Get detailed terrain" from the 3D view; the south pole goal is to check deep craters for ice, so build a list of ice deposits if possible, otherwise map craters deep enough to hold ice, add them to the heatmap, and add a mission-goal selector whose only option is "Check for ice in deep craters".
+- **What the AI did:**
+  - Removed the 3D view's "Get detailed terrain" chip (`web/site3d.js`, `web/index.html`, `web/app.js`). The Site tab's button stays. The AI told the user that the button fetches ~30 m LOLA data, about 8× finer than the 237 m global grid, which is the opposite of what the request assumed.
+  - `scripts/fetch_polar_craters.py` → `api/data/polar_craters.json`: 205 IAU-named craters poleward of 75° (≥8 km) from the USGS Gazetteer. Published ice evidence, each with a citation: Cabeus (LCROSS, Colaprete 2010), Shackleton (Zuber 2012), Haworth/Faustini/Shoemaker (LAMP, Hayne 2015).
+  - `api/ice.py`: permanent shadow from LOLA skylines against the Sun's highest possible path (±1.54° declination), Diviner cold traps (≤110 K, Paige 2010), and per-crater depth, floor shadow and coldest cell. Craters are rated known / likely / possible / unlikely.
+  - `GET /ice`; `/find` accepts `goal: "ice_craters"` and `max_ice_km`. Cells must lie within that distance of an ice target, and each region reports `ice_km` and its nearest rated crater.
+  - Frontend: a Mission goal select (one option) and a distance field; the search area now defaults to the south pole. Ice candidates are drawn in blue on the heatmap, known and likely craters are labelled on the globe with tooltips, and clicking a label opens the crater floor. The results show the ice distance.
+  - Updated `docs/ARCHITECTURE.md`, `CLAUDE.md` and `README.md`.
+- **Checks the AI ran on its own output:**
+  - Crater temperatures match the literature: Haworth 51 K, Shoemaker 65 K, Faustini 72 K, Hermite 86 K, Shackleton 91 K, Cabeus 108 K. All have permanently shadowed floors.
+  - New tests in `tests/test_ice.py` (Sun geometry at the pole and at 70°S, flat pole lit vs deep polar bowl shadowed, ratings, distances, finder filter, the crater file's sources). The suite gives 86 passed, 3 skipped.
+  - In the browser, a south-pole search for December 2026 (≥50 % Sun, ≥50 % Earth, ≥50 W/m², ≤10°, ≤50 km to ice) found 18 regions in 7.6 s. 17 crater labels showed, the 3D view opened without the button, and the console showed no errors.
+  - Found and fixed a bug where the distance field's `step="5"` with `min="1"` made the default of 50 invalid, which silently blocked the form.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:**
+  - The ice map was not checked visually on screen (the browser pane was hidden), only through page state.
+  - 0.5° cells and the 237 m grid miss sub-km cold traps. "Possible" craters are often warm cells with a small shadowed foot of wall.
+  - Evidence summaries come from the cited papers' abstracts and secondary sources, not a full reading.
+  - Not compared with published PSR maps (e.g. Mazarico et al. 2011).
+
+### 2026-11-15 · Session 12: start screen, skip-ice option, clearer heatmap, zoom-scaled pins
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** an option to skip the ice check; clearer heatmaps with outlines around the most suitable areas; a smaller click pin that scales with zoom, applied to the existing pins too; a screen before the landing page with two simple buttons (explore, or enter mission requirements).
+- **What the AI did:** added the start screen (`#choice`: "Explore the Moon" / "Plan a mission"), with "← Back" on the requirements form. Added the goal option "No specific goal (skip the ice check)", which hides and disables the ice distance field. Rewrote `applyHeatmap()`: crisp cells with stronger colours, outlines (bright on a dark halo) around areas that meet everything and around likely ice cells, rank labels #1–#10 for the top regions with tooltips and click-to-open. Pins and labels now scale with camera altitude (the user pin starts at 0.45° instead of 0.8°).
+- **Checks the AI ran on its own output:** in the browser, checked through page state: the intro leads to the start screen; Plan, Back and Explore go where they should; with no goal the form is valid and the ice field is hidden. An ice search showed rank labels #1–#10 and 17 crater labels. Zooming to altitude 0.2 shrank the pin from 0.42° to 0.04° across, including during fly-to animations. The console showed no errors. A screenshot showed the first outline version drawing white wedges near the pole (north–south edges widened by 1/cos(lat) grew wider than the cells), so the AI capped them at 40 % of a cell; the wedges were gone in the next screenshot.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the browser pane was hidden, so the screenshots were low-resolution and the heatmap's readability wasn't judged closely. Outlines are drawn into the 4096 px globe texture, so they go soft when zoomed far in.
+
+### 2026-11-15 · Session 13: visible pin, three-colour smooth heatmap, grand type, shadow-reveal intro
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** the user pin was too small and needed a colour that contrasts with the grey surface; the heatmap was blocky at the pole and should be three colours (yellow marginal, green suitable without ice in range, light blue suitable with ice in range); a font with a sense of grandeur on the intro and landing pages; an intro where the Moon's shadow reveals it.
+- **What the AI did:**
+  - Pin: hot magenta (`#ff2bd6`), 2.5× the radius, taller, with a pulsing ring (globe.gl rings). Still scales with zoom.
+  - Finder (`api/finder.py`): class 3 = suitable and within `max_ice_km` of ice, class 2 = suitable (previously cells beyond the ice range were dropped). Regions are grouped per class, ice-range regions first; added `within_ice_range`, `ice_range_cells` and `ice_range_area_km2`. Test updated.
+  - Heatmap: every cell is drawn as a 9 km disc on the ground (an ellipse widened by 1/cos(lat), wrapped across the seam, with polar caps filled). This gives smooth round areas with white outlines. The legend was rewritten. A first version that smoothed (averaged) the grid was replaced because it erased isolated single suitable cells, which are many of the best spots.
+  - Type: Cinzel for the titles, Cormorant Garamond for the subtitles (Google Fonts). Intro: the light starts behind the Moon and swings round to the viewer over 5.6 s, following the rotating camera, with the title retimed to fade in as the light arrives. The body now starts in intro mode so the menus don't flash before the script loads.
+- **Checks the AI ran on its own output:** pytest gives 86 passed, 3 skipped. In the browser, an ice search for December 2026 found 967 suitable cells, 24 of them within 50 km of ice; result #1 is in range. Screenshots showed smooth blue, green and yellow areas with outlines near 81.5°S and no polar wedges, and the heatmap renders in 0.17 s (0.74 s for the averaging version). Intro screenshots at 1 s, 3.5 s and 7.5 s showed the Moon going from dark to lit with the Cinzel title. The magenta pin is visible from the whole-Moon view. The console showed no errors. The AI also found that the running server needed a restart to pick up the finder change.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the browser pane was hidden, so the screenshots were low-resolution. Discs make small areas look like round 18 km blobs, a display choice that is coarser than the data near the pole. The reveal lighting's direction is chosen for looks, not the real Sun (the real Sun takes over once the app opens). Fonts need internet; without it they fall back to Georgia.
+
+### 2026-11-15 · Session 14: Earth beside the Moon in the intro
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** put the Earth in view on the left of the intro screen, with the Moon black at first and revealed as it comes out of shadow while the title appears at the same time.
+- **What the AI did:** added `web/intro_earth.js`, a small separate three.js canvas with a rotating, tilted Earth: day/night shader with city lights, a thin atmosphere rim, NASA Blue Marble textures from the three-globe examples on jsDelivr (not stored in the repo). The Moon's intro view zoomed out to altitude 1.35 and shifted right, with the canvas 38vw oversized while shifted so the starfield reaches the left edge. The Moon now starts fully black (no fill light), and the title's opacity and blur are driven by the same clock as the light, so they happen together. On reveal, the Earth fades out and is disposed, and the globe returns to screen size.
+- **Checks the AI ran on its own output:** browser screenshots at 1.2 s showed a lit Earth on the left, a black Moon and a faint title; at 3.5–7.5 s the Moon was lit with the full title. Found and fixed a starless strip at the left edge from shifting the canvas. After Enter → Explore, the Earth canvas was removed and the globe was back to window width, with no console errors. The "Multiple instances of Three.js" warning already appeared before this change (the 3D site view also imports three); it is harmless.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the browser pane was hidden, so only the first screenshot rendered at full size. Earth's size and position are artistic (seen from the Moon it is about 2° across), and its lighting direction is chosen for looks. The textures need internet.
+
+### 2026-11-15 · Session 15: site plan (solar array, comms hub, routes, nearest ice)
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** a pasted design: when a landing site is selected, add to the 3D map the best place for a comms hub and a solar panel, a line with the drivable distance between them, and a line to the nearest ice deposit with its distance.
+- **What the AI did:**
+  - `api/siteplan.py` + `GET /site/plan` (separate from `/evaluate`, so its contract is unchanged): routing grid, Dijkstra with a 15° drivable limit (cited to NASA's VIPER page), mast skylines for candidate spots (coarse then fine), Sun/Earth from the site's own Horizons series, a solar ↔ comms route, and a leg toward the nearest ice target (`IceMap.nearest_target`, named after the crater it lies in).
+  - 3D view (`web/site3d.js`): masts and labels, route tubes draped on the terrain with distances, a dashed ice line (or an edge arrow when the ice is beyond 20 km), a "Site plan" panel and toggle. The globe gets the routes and a dashed great-circle line to the ice.
+  - `tests/test_siteplan.py` (5 tests); docs updated.
+- **Checks the AI ran on its own output:** found and fixed a routing bug. Only the step's own grade was checked, so routes could zigzag across 30° hillsides; near Shackleton the whole 400 km² counted as drivable, and with the per-cell ground-slope limit it is 226 km². Sanity checks: a rim site near Shackleton gets 91–100 % Sun on a 10 m mast, a spot on Cabeus's floor 3.7 %. The nearest ice from the rim is Shackleton at 14.1 km, with its citation. pytest gives 91 passed, 3 skipped. In the browser: the plan panel, 7 3D objects and 2 globe paths, no console errors; a close-up screenshot showed the masts, labels and the 572 m drive line.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** on the global grid (~237 m) spots and routes are rough. The 15° limit is VIPER's typical value, not a hard spec, and VIPER was cancelled in 2024. The ice target is a 0.5° cell centre or a crater floor point, not an exact deposit. Detailed (~30 m) terrain was tested through the API only (Shackleton rim: 2.4 s on the server, 50 m routing grid, 218 km² reachable), not in the browser. The browser pane was hidden, so the screenshots were low-resolution.
+
+### 2026-11-15 · Session 16: monochrome menus, comms tower heights, UI cleanup
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** remove the emojis in the 3D view; remove the "Get detailed terrain" button in the global view; open the right panel after a mission search; frosted black/grey/white menus instead of blue; show an ideal and a realistic comms tower height in the 3D view; make the ice-range result pins contrast with the blue heatmap.
+- **What the AI did:** removed the emojis from the 3D view's labels, HUD, plan panel and toggle. Removed the Site tab's detailed-terrain button and its code; the API still supports detailed terrain. `setPanelCollapsed(false)` runs after a search. The colour tokens are now neutral, with frosted glass (16 px blur) on the panel, overlays, landing and choice cards and the 3D HUD and plan panel; primary buttons and active tabs are white. `api/siteplan.py` adds `comms.tower`: Earth-in-view % for towers of 2–500 m, the ideal height, and a realistic height (best up to 20 m, labelled an estimate) with a note on the LUNARSABER tower concept. The 3D comms label and the plan panel show both. Ice-range rank labels are now orange (`#ff8a1f`), the rest white; the legend was updated.
+- **Checks the AI ran on its own output:** tower curves at three sites: Shackleton rim 10 m → 49.9 % (ideal 10 m); Cabeus floor flat at 38 % until 500 m → 41.7 % (flagged beyond concepts); an open site 100 % at 2 m. A test checks that a taller tower never sees less. pytest gives 91 passed, 3 skipped. In the browser: with the panel collapsed beforehand, it was open after the search; all 10 rank labels were orange; the 3D view text had no emoji; the plan panel showed the tower row; no console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the 20 m "realistic" tower is an estimate, not a spec. The LUNARSABER reference (~100 m, scalable to ~200 m) was checked against press coverage (Space.com, Universe Today), not a primary Honeybee or DARPA document. The monochrome theme was not reviewed at full resolution (the pane was hidden).
+
+### 2026-11-15 · Session 17: start screen without emojis, matte Moon, front-lit Earth
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** remove the emojis on the start screen; make the Moon less reflective in the opening (it's matte in reality); light the Earth from the camera side instead of from behind.
+- **What the AI did:** removed the two emoji icons from the start-screen buttons. Set globe.gl's Moon material (MeshPhongMaterial) to no specular highlight (`specular` black, `shininess` 0); this applies everywhere, not just the intro. Moved the intro Earth's sunlight to over the viewer's shoulder, so the side facing the camera is lit.
+- **Checks the AI ran on its own output:** in the browser the material read back as `shininess` 0 and specular `000000`; an intro screenshot showed a matte Moon with no highlight and the Earth's lit face toward the viewer; the start screen text had no emoji; no console errors.
+- **What a human checked:** _[fill in]_
+- **Follow-up:** the user reported the Earth still looked unlit. The cause was the custom Earth shader skipping three.js's output colour conversion (`#include <colorspace_fragment>`), so the sRGB textures rendered far too dark. Added it and centred the light on the camera side; a screenshot then showed a fully lit day side.
+- **Still unverified / known limits:** checked in browser screenshots only.
+
+### 2026-11-15 · Session 18: pole markers, explanation tooltips, Celsius, no lander UI, filled stat tiles
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** add markers above the north and south poles in our style; add tooltips explaining why the analysis chose each location; show temperatures in Celsius; remove the lander section and its pass/fail; fill each stat box in proportion to its viability.
+- **What the AI did:**
+  - N/S pole markers on the globe's html layer (Cinzel letters in frosted rings, "NORTH POLE"/"SOUTH POLE").
+  - A shared floating tooltip for any `data-tip` element (hover or keyboard focus). It explains: each stat tile (what it measures, colour thresholds, what the fill means); each search result (every requirement against the user's thresholds, the tightest margin, ice range and nearest rated crater, the ranking rule, the terrain check); how the search works; and each site-plan row (candidates compared and the lander's own value, the route rule, the tower method, the ice target's basis). `/site/plan` gained `solar.why`/`comms.why` (candidate count and the value at the lander).
+  - Celsius everywhere in the UI, including the ice texts in `api/ice.py` (≤−163 °C); the API numbers stay in kelvin.
+  - Removed the Mission section (lander, payload, landing date and windows) and the Verdict section, the compare rows for verdict, lander and landing, and the lander list loading. Compare pins are now a neutral white. Ratings use a typical 10° slope and a 127 °C (400 K) limit, labelled as estimates.
+  - Stat tiles are filled from the left by viability in their rating colour.
+- **Checks the AI ran on its own output:** pytest gives 91 passed, 3 skipped. In the browser after an ice search: both pole markers present; result #1's explanation lists its four margins, "tightest requirement is daylight", 19.6 km to ice, the ranking and the terrain check. Site tiles read e.g. Sunlight 58 % (good, 58 % fill), Temperature −203 °C to −9 °C, Peak sunlight 221 W/m² (warn, 16 %); the tooltip opened on hover; the Mission and Verdict sections are gone. The 3D plan had five explanation icons. No console errors. The AI fixed one wording error: the spot explanation had mixed up the 10° spot limit and the 15° drive limit.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the temperature fill (gentleness of the day–night swing out of 400 °C) and the slope fill (empty at 20°) are design choices, not standards. The pole markers and tooltips were not judged at full resolution (the browser pane was hidden).
+
+### 2026-11-15 · Session 19: home-plate pole badges
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** drop the "North Pole"/"South Pole" labels and keep N and S, in an icon pointing to the pole, shaped like home plate.
+- **What the AI did:** replaced the round markers with a pentagon (home plate) badge: a white edge and a dark frosted fill (two clip-path layers), the Cinzel letter inside, and the point toward the pole (down for N, up for S). Removed the text labels; the full name is kept as a hover title.
+- **Checks the AI ran on its own output:** measured in the browser against `globe.getScreenCoords`. The first version's tip was 11 px off, because globe.gl's inline transform overrides a marker's own transform; the offset now sits on the inner badge, and both tips line up with the poles (x exact, y within 5 px, the marker's small lift). No console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the shape was checked by measurement, not seen at full resolution (the browser pane was hidden).
+
+### 2026-11-15 · Session 20: closing the gaps against the challenge statement
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** "Does this project meet this challenge statement…? If not recommend some changes", then "lets implement these changes in the way/order you think is best". The AI's assessment found three gaps: no timeline charts, no 2D Sun/Earth-vs-horizon view, and weak same-site date comparison (made worse when the lander and landing-window UI was removed in Session 18).
+- **What the AI did (in this order):**
+  - Backend `api/scenarios.py`: `GET /site/dates` (every hour a candidate touchdown, scored on the next N days by cumulative sums; daily best hour and a top 5 at least 2 days apart) and `GET /site/nearby` (9×9 points within ±3 km, each with its own LOLA skyline). `compute_skylines` gained `r0_m` so it can match `horizon_profile` exactly. `tests/test_scenarios.py` added (4 tests).
+  - `web/skycharts.js`: a Sky & horizon panel with a 360° horizon panorama (LOLA skyline, Sun/Earth paths, live markers), an elevation chart with the terrain horizon dashed, Sun/Earth/both in-view bars, a power curve, a shared time cursor, a readout with time to the next sunset/Earthset or rise, an Enlarge overlay and a timeline CSV.
+  - A Sun elevation tile (max, and average while in view; the tooltip explains flat vs vertical panels at the poles).
+  - Comparison columns became site + dates scenarios, plus −1 mo/−1 d/+1 d/+1 mo steps, "Use current dates for all" and Export CSV. Best landing dates UI (day strip and picks; clicking one loads the dates). Nearby alternatives UI (two heat grids; click to open a spot).
+  - Learn tab (6 cards) linked from the start screen; share links (`#lat=&lon=&from=&to=`) that open a site directly; README, ARCHITECTURE and CLAUDE.md updated.
+- **Checks the AI ran on its own output:**
+  - Found that the first nearby grid disagreed with the site's own tiles (100 % vs 82 % sunlight at the Shackleton rim). The cause: a coarser skyline whose samples started 60 m out instead of 30 m, which matters with the Sun ~2° up. The grid now uses the `/evaluate` skyline method; the centre then matched (20.4 % vs 20.3 %, 41.4 % vs 41.4 % in a scripted check).
+  - Fixed a wrong expected value in its own new test (6 sunny days, not 5).
+  - pytest gives 95 passed, 3 skipped.
+  - In the browser: the panel draws all four views; best dates for the Shackleton rim (14-day mission, from 1 Dec 2026) put 12 Dec 11:00 UTC first (Sun 97 %, Earth 80 %); the same site compared for 1–29 Dec vs a month later shows 82 % → 66 % sunlight; the share link reopened the same site and dates; the enlarged panel was seen at full resolution (skyline, Sun path, Earth's libration loop); at 375 px wide there is no horizontal overflow. No console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the best-dates score (mean of Sun % and Earth %, minus 5 for a dark touchdown) is a design choice. Date search and nearby use the ~237 m global terrain. Learn-card facts (1.5° tilt, ~7° libration, −163 °C ice stability, LCROSS) are standard values, not re-cited in the app. CSV downloads were not clicked in the test browser.
+
+### 2026-11-15 · Session 21: hover beacon, "why recommended" on the Site tab, full-size charts window
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** highlight a site's marker on hover and extend it into space so it can be seen from the other side of the Moon; is there more information behind the stat tiles' "i"? (the user remembered a "why it chose this" explanation); a pop-up window with the charts laid out full size instead of in sidebar order.
+- **What the AI did:**
+  - Hover beacon: from the globe (labels, pins), the Sites list, search results and comparison headers. A white beam 1.1 Moon radii tall rises from the site (a points-layer cylinder), with a name tag at its top and the label enlarged and turned white.
+  - Answered the "i" question: the tiles hide nothing extra (the whole tile is the tooltip). The remembered "why" was only on search results' "i", so sites opened from a search now show a "Why this site was recommended" box on the Site tab.
+  - The charts window (now "Full view", also opened by clicking the panorama) is a dashboard grid: panorama with the readout and a legend beside it, then elevation next to power and in-view windows. Each chart sizes to its own box (the cursor now tracks each chart's own width).
+- **Checks the AI ran on its own output:** in the browser, the full-view grid rendered at full resolution; it showed Earth's below-horizon loop spilling out of the panorama into the next chart, which was fixed by clipping. Hovering Apollo 11 in the Sites list added a beam at altitude 1.1, its tag and a white label. Seen from 98° away, the beam stuck out past the limb. From almost exactly behind (177°) it was hidden: that is geometry (a radial beam only clears the limb more than ~28° off the anti-view axis), so the tag now always shows and says "behind the Moon". The search result #1 Site tab showed the why box with every margin, the ice distance, the ranking and the terrain check. No console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** beacons for sites almost directly behind the Moon show only the tag, not the beam.
+
+### 2026-11-15 · Session 22: clearer pop-out, "Why this site?" links, search row layout
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** a clearer icon and wording to pop the charts out; make the search results' "why" a clear link that opens the explanation; fix the km² overlapping the UI when it reaches 3+ digits.
+- **What the AI did:** the sky panel has a white "Expand charts" pill (pop-out arrow icon) in its header (a second dashed "Pop out" bar under the charts was added, then removed at the user's request, so only the pill remains). Each search result has an underlined "Why this site?" link that expands the reasoning in place, as a lead sentence plus bullets ("Hide explanation" collapses it); clicking it doesn't open the site. The result header is now a flex row (title wraps, "+ Compare" beside it) instead of an absolutely positioned button on top of the text.
+- **Checks the AI ran on its own output:** a broad ice search (25 results, areas up to 2,033 km²) gave zero title/button overlaps (measured from bounding boxes); the why link toggled and stayed on the Search tab; screenshots of the result list and the sky panel looked as intended. No console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** none new.
+
+### 2026-11-15 · Session 23: pitch deck (branch `docs/pitch-deck`)
 
 - **Who:** _[team member name]_
 - **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill (pptxgenjs)
@@ -206,7 +378,7 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the screenshots came from a run on PLACEHOLDER terrain and approximate ephemeris; slide 7's results screenshot should be retaken with real data. "~10 s" comes from the README; "weeks → minutes" is a storytelling claim, not measured. Science facts (below −200 °C in shadowed craters, uses of water) are general knowledge and were not cited on the slides.
 
-### 2026-11-15 · Session 11: pitch deck redesign (branch `docs/pitch-deck`)
+### 2026-11-15 · Session 24: pitch deck redesign (branch `docs/pitch-deck`)
 
 - **Who:** _[team member name]_
 - **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill (pptxgenjs), web search
@@ -217,7 +389,7 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **Follow-up (same session):** slides 3–7 reorganised into Relevance, Impact, Creativity, Validity, then Toronto/Canadian impact with the low-colour design choices; slides 1–2 unchanged.
 - **Still unverified / known limits:** "Lunarcy could help Ontario's rover teams" is a pitch claim; no rover team has been contacted. The screenshots still come from a PLACEHOLDER-terrain run.
 
-### 2026-11-15 · Session 12: slide titles and real-data screenshots (branch `docs/pitch-deck`)
+### 2026-11-15 · Session 25: slide titles and real-data screenshots (branch `docs/pitch-deck`)
 
 - **Who:** _[team member name]_
 - **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill, Playwright

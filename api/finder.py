@@ -60,6 +60,11 @@ class Criteria:
     min_avg_w_m2: float = 0.0
     max_slope_deg: float = 90.0
     region: str = "all"
+    goal: str | None = None          # "ice_craters": also require an ice candidate nearby (api/ice.py)
+    max_ice_km: float = 50.0
+
+
+GOALS = {"ice_craters": "Check for ice in deep craters"}
 
 
 # ---- Grid -------------------------------------------------------------------------------
@@ -120,11 +125,12 @@ def slope_grid(heights, res: float = RES_DEG) -> np.ndarray:
 
 
 def compute_skylines(heights, lats, lons, az_step: float = SKY_AZ_STEP, samples: int = 120,
-                     radius_m: float = 150_000.0, observer_m: float = 2.0) -> np.ndarray:
-    """Terrain horizon elevation (deg) for many sites at once: shape (N, 360/az_step)."""
+                     radius_m: float = 150_000.0, observer_m: float = 2.0, r0_m: float = 60.0) -> np.ndarray:
+    """Terrain horizon elevation (deg) for many sites at once: shape (N, 360/az_step).
+    With az_step=1, samples=300, r0_m=30 it matches api/patch.horizon_profile (the /evaluate skyline)."""
     lats, lons = np.atleast_1d(lats), np.atleast_1d(lons)
     az = np.arange(0.0, 360.0, az_step)
-    r = np.geomspace(60.0, radius_m, samples)
+    r = np.geomspace(r0_m, radius_m, samples)
     drop = r ** 2 / (2 * MOON_R_M)
     out = np.empty((len(lats), len(az)), dtype=np.float32)
     batch = max(1, 400_000 // (len(az) * samples))
@@ -248,16 +254,21 @@ def label_regions(mask: np.ndarray) -> tuple[np.ndarray, int]:
     return labels, n
 
 
-def score(sun, earth, watts, slope, c: Criteria):
+def score(sun, earth, watts, slope, c: Criteria, ice_km=None):
     """The weakest margin above the requirements (0 = just meets them, 1 = ideal)."""
     m_sun = (sun - c.min_sun_pct) / max(100 - c.min_sun_pct, 1)
     m_earth = (earth - c.min_earth_pct) / max(100 - c.min_earth_pct, 1)
     m_w = (watts - c.min_avg_w_m2) / max(c.min_avg_w_m2, 50.0)
     m_slope = (c.max_slope_deg - slope) / max(c.max_slope_deg, 1)
-    return np.minimum(np.minimum(m_sun, m_earth), np.minimum(np.minimum(m_w, 1.0), m_slope))
+    out = np.minimum(np.minimum(m_sun, m_earth), np.minimum(np.minimum(m_w, 1.0), m_slope))
+    if ice_km is not None:
+        out = np.minimum(out, (c.max_ice_km - ice_km) / max(c.max_ice_km, 1))
+    return out
 
 
-def find_regions(crit: Criteria, ephem, heights, skylines: Skylines | None, res: float = RES_DEG) -> dict:
+def find_regions(crit: Criteria, ephem, heights, skylines: Skylines | None, res: float = RES_DEG,
+                 ice=None) -> dict:
+    """`ice` is an api.ice.IceMap, needed when crit.goal == "ice_craters"."""
     t0 = time.time()
     days = (crit.period_end - crit.period_start).days + 1
     hours = days * 24
@@ -269,22 +280,30 @@ def find_regions(crit: Criteria, ephem, heights, skylines: Skylines | None, res:
     slope = slope_grid(heights, res)
     inside = region_mask(LA, LO, crit.region)
 
+    # Suitable = every landing requirement. With the ice goal, suitable cells within
+    # max_ice_km of an ice candidate are the best class ("ice"); the rest stay "suitable".
     meets = ((sun >= crit.min_sun_pct) & (earth >= crit.min_earth_pct)
              & (watts >= crit.min_avg_w_m2) & (slope <= crit.max_slope_deg) & inside)
     near = (~meets & inside
             & (sun >= NEAR_FRACTION * crit.min_sun_pct) & (earth >= NEAR_FRACTION * crit.min_earth_pct)
             & (watts >= NEAR_FRACTION * crit.min_avg_w_m2) & (slope <= crit.max_slope_deg / NEAR_FRACTION))
+    want_ice = crit.goal == "ice_craters" and ice is not None
+    ice_km = ice.distance_km(LA, LO).reshape(LA.shape) if want_ice else None
+    with_ice = meets & (ice_km <= crit.max_ice_km) if want_ice else np.zeros_like(meets)
     sc = score(sun, earth, watts, slope, crit)
 
-    labels, n = label_regions(meets)
+    # Regions: connected ice-range cells first, then the other suitable cells.
     cell_km2 = (MOON_R_KM ** 2 * math.radians(res) ** 2) * np.cos(np.radians(LA))
-    regions = []
-    for k in range(n):
-        cells = np.flatnonzero(labels.ravel() == k)
-        best = cells[np.argmax(sc.ravel()[cells])]
-        regions.append({"k": k, "cells": cells, "best": best,
-                        "score": float(sc.ravel()[best]), "area": float(cell_km2.ravel()[cells].sum())})
-    regions.sort(key=lambda r: (r["score"], r["area"]), reverse=True)
+    regions, n = [], 0
+    for mask, in_range in ((with_ice, True), (meets & ~with_ice, False)):
+        labels, m = label_regions(mask)
+        for k in range(m):
+            cells = np.flatnonzero(labels.ravel() == k)
+            best = cells[np.argmax(sc.ravel()[cells])]
+            regions.append({"k": n + k, "cells": cells, "best": best, "ice": in_range,
+                            "score": float(sc.ravel()[best]), "area": float(cell_km2.ravel()[cells].sum())})
+        n += m
+    regions.sort(key=lambda r: (r["ice"], r["score"], r["area"]), reverse=True)
 
     # Stage 2: give the best cell of each top region a full terrain skyline and re-check it.
     s_vec, E_vec = sky_vectors(sub)
@@ -302,6 +321,9 @@ def find_regions(crit: Criteria, ephem, heights, skylines: Skylines | None, res:
             stats, terrain_checked, checked = (float(a[0]), float(e_[0]), float(w[0])), True, checked + 1
         sun_b, earth_b, w_b = stats
         ok = sun_b >= crit.min_sun_pct and earth_b >= crit.min_earth_pct and w_b >= crit.min_avg_w_m2
+        ice_b = float(ice_km.ravel()[b]) if want_ice else None
+        extra = ({"ice_km": round(ice_b, 1), "within_ice_range": r["ice"],
+                  "nearest_ice_crater": ice.nearest_crater(lat, lon)} if want_ice else {})
         out.append({
             "id": f"r{r['k']}",
             "lat": round(lat, 3), "lon": round(lon, 3),
@@ -313,19 +335,24 @@ def find_regions(crit: Criteria, ephem, heights, skylines: Skylines | None, res:
                                        slope.ravel()[b], crit)), 3),
             "terrain_checked": terrain_checked,
             "passes_with_terrain": bool(ok),
+            **extra,
         })
-    out.sort(key=lambda r: (r["passes_with_terrain"], r["score"], r["area_km2"]), reverse=True)
+    out.sort(key=lambda r: (r["passes_with_terrain"], r.get("within_ice_range", False), r["score"], r["area_km2"]),
+             reverse=True)
 
     classes = np.full(LA.shape, 255, np.uint8)            # 255 = outside the search region
     classes[inside] = 0
     classes[near] = 1
     classes[meets] = 2
+    classes[with_ice] = 3                                  # suitable and within max_ice_km of ice
     return {
         "criteria": {
             "period_start": crit.period_start.isoformat(), "period_end": crit.period_end.isoformat(),
             "min_sun_pct": crit.min_sun_pct, "min_earth_pct": crit.min_earth_pct,
             "min_avg_w_m2": crit.min_avg_w_m2, "max_slope_deg": crit.max_slope_deg,
             "region": crit.region, "region_label": REGIONS.get(crit.region, crit.region),
+            "goal": crit.goal, "goal_label": GOALS.get(crit.goal) if crit.goal else None,
+            "max_ice_km": crit.max_ice_km if crit.goal == "ice_craters" else None,
         },
         "period": {"start": f"{crit.period_start}T00:00Z",
                    "end": f"{crit.period_end + timedelta(days=1)}T00:00Z",
@@ -335,11 +362,15 @@ def find_regions(crit: Criteria, ephem, heights, skylines: Skylines | None, res:
                  "classes_b64": base64.b64encode(classes.tobytes()).decode()},
         "counts": {"meeting_cells": int(meets.sum()), "near_cells": int(near.sum()),
                    "searched_cells": int(inside.sum()), "regions": int(n),
-                   "meeting_area_km2": round(float(cell_km2[meets].sum()))},
+                   "meeting_area_km2": round(float(cell_km2[meets].sum())),
+                   "ice_range_cells": int(with_ice.sum()),
+                   "ice_range_area_km2": round(float(cell_km2[with_ice].sum()))},
         "regions": out,
         "terrain": {"precomputed_skylines": bool(skylines and skylines.loaded),
                     "skyline_cells": int(skylines.rows) if skylines and skylines.loaded else 0,
                     "checked_in_stage2": checked},
-        "sources": [sub["source"], heights.source] + ([skylines.source] if skylines and skylines.loaded else []),
+        "sources": ([sub["source"], heights.source] + ([skylines.source] if skylines and skylines.loaded else [])
+                    + (ice.sources() if want_ice else [])),
+        "ice": ice.to_dict() if want_ice else None,
         "seconds": round(time.time() - t0, 1),
     }
