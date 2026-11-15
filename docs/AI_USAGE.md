@@ -257,6 +257,39 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the browser pane was hidden, so the screenshots were low-resolution. Discs make small areas look like round 18 km blobs, a display choice that is coarser than the data near the pole. The reveal lighting's direction is chosen for looks, not the real Sun (the real Sun takes over once the app opens). Fonts need internet; without it they fall back to Georgia.
 
+### 2026-11-15 · Session 14: Earth beside the Moon in the intro
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** put the Earth in view on the left of the intro screen, with the Moon black at first and revealed as it comes out of shadow while the title appears at the same time.
+- **What the AI did:** added `web/intro_earth.js`, a small separate three.js canvas with a rotating, tilted Earth: day/night shader with city lights, a thin atmosphere rim, NASA Blue Marble textures from the three-globe examples on jsDelivr (not stored in the repo). The Moon's intro view zoomed out to altitude 1.35 and shifted right, with the canvas 38vw oversized while shifted so the starfield reaches the left edge. The Moon now starts fully black (no fill light), and the title's opacity and blur are driven by the same clock as the light, so they happen together. On reveal, the Earth fades out and is disposed, and the globe returns to screen size.
+- **Checks the AI ran on its own output:** browser screenshots at 1.2 s showed a lit Earth on the left, a black Moon and a faint title; at 3.5–7.5 s the Moon was lit with the full title. Found and fixed a starless strip at the left edge from shifting the canvas. After Enter → Explore, the Earth canvas was removed and the globe was back to window width, with no console errors. The "Multiple instances of Three.js" warning already appeared before this change (the 3D site view also imports three); it is harmless.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the browser pane was hidden, so only the first screenshot rendered at full size. Earth's size and position are artistic (seen from the Moon it is about 2° across), and its lighting direction is chosen for looks. The textures need internet.
+
+### 2026-11-15 · Session 15: site plan (solar array, comms hub, routes, nearest ice)
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** a pasted design: when a landing site is selected, add to the 3D map the best place for a comms hub and a solar panel, a line with the drivable distance between them, and a line to the nearest ice deposit with its distance.
+- **What the AI did:**
+  - `api/siteplan.py` + `GET /site/plan` (separate from `/evaluate`, so its contract is unchanged): routing grid, Dijkstra with a 15° drivable limit (cited to NASA's VIPER page), mast skylines for candidate spots (coarse then fine), Sun/Earth from the site's own Horizons series, a solar ↔ comms route, and a leg toward the nearest ice target (`IceMap.nearest_target`, named after the crater it lies in).
+  - 3D view (`web/site3d.js`): masts and labels, route tubes draped on the terrain with distances, a dashed ice line (or an edge arrow when the ice is beyond 20 km), a "Site plan" panel and toggle. The globe gets the routes and a dashed great-circle line to the ice.
+  - `tests/test_siteplan.py` (5 tests); docs updated.
+- **Checks the AI ran on its own output:** found and fixed a routing bug. Only the step's own grade was checked, so routes could zigzag across 30° hillsides; near Shackleton the whole 400 km² counted as drivable, and with the per-cell ground-slope limit it is 226 km². Sanity checks: a rim site near Shackleton gets 91–100 % Sun on a 10 m mast, a spot on Cabeus's floor 3.7 %. The nearest ice from the rim is Shackleton at 14.1 km, with its citation. pytest gives 91 passed, 3 skipped. In the browser: the plan panel, 7 3D objects and 2 globe paths, no console errors; a close-up screenshot showed the masts, labels and the 572 m drive line.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** on the global grid (~237 m) spots and routes are rough. The 15° limit is VIPER's typical value, not a hard spec, and VIPER was cancelled in 2024. The ice target is a 0.5° cell centre or a crater floor point, not an exact deposit. Detailed (~30 m) terrain was tested through the API only (Shackleton rim: 2.4 s on the server, 50 m routing grid, 218 km² reachable), not in the browser. The browser pane was hidden, so the screenshots were low-resolution.
+
+### 2026-11-15 · Session 16: monochrome menus, comms tower heights, UI cleanup
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** remove the emojis in the 3D view; remove the "Get detailed terrain" button in the global view; open the right panel after a mission search; frosted black/grey/white menus instead of blue; show an ideal and a realistic comms tower height in the 3D view; make the ice-range result pins contrast with the blue heatmap.
+- **What the AI did:** removed the emojis from the 3D view's labels, HUD, plan panel and toggle. Removed the Site tab's detailed-terrain button and its code; the API still supports detailed terrain. `setPanelCollapsed(false)` runs after a search. The colour tokens are now neutral, with frosted glass (16 px blur) on the panel, overlays, landing and choice cards and the 3D HUD and plan panel; primary buttons and active tabs are white. `api/siteplan.py` adds `comms.tower`: Earth-in-view % for towers of 2–500 m, the ideal height, and a realistic height (best up to 20 m, labelled an estimate) with a note on the LUNARSABER tower concept. The 3D comms label and the plan panel show both. Ice-range rank labels are now orange (`#ff8a1f`), the rest white; the legend was updated.
+- **Checks the AI ran on its own output:** tower curves at three sites: Shackleton rim 10 m → 49.9 % (ideal 10 m); Cabeus floor flat at 38 % until 500 m → 41.7 % (flagged beyond concepts); an open site 100 % at 2 m. A test checks that a taller tower never sees less. pytest gives 91 passed, 3 skipped. In the browser: with the panel collapsed beforehand, it was open after the search; all 10 rank labels were orange; the 3D view text had no emoji; the plan panel showed the tower row; no console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the 20 m "realistic" tower is an estimate, not a spec. The LUNARSABER reference (~100 m, scalable to ~200 m) was checked against press coverage (Space.com, Universe Today), not a primary Honeybee or DARPA document. The monochrome theme was not reviewed at full resolution (the pane was hidden).
+
 ---
 
 ## Entry template

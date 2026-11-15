@@ -4,6 +4,7 @@
 
 import { horizonsUrl, moontrekUrl, quickmapUrl } from './links.js';
 import { open3dView } from './site3d.js';
+import { startIntroEarth } from './intro_earth.js';
 
 const MAX_DATE = '2050-12-31';
 const FALLBACK_TEXTURE = 'https://cdn.jsdelivr.net/gh/vasturiano/globe.gl@v2.46.2/example/moon-landing-sites/lunar_surface.jpg';
@@ -121,6 +122,17 @@ const globe = new Globe(globeEl)
   .ringMaxRadius(() => zs(PIN.ring))
   .ringPropagationSpeed(() => zs(PIN.ring * 1.4))
   .ringRepeatPeriod(900)
+  // Site plan on the globe: drivable routes (solid) and the line to the nearest ice (dashed)
+  .pathPoints('coords')
+  .pathPointLat((p) => p[0])
+  .pathPointLng((p) => p[1])
+  .pathPointAlt(0.002)
+  .pathColor('color')
+  .pathStroke('stroke')
+  .pathDashLength('dash')
+  .pathDashGap('gap')
+  .pathDashAnimateTime(0)
+  .pathLabel('label')
   .pointLabel((s) => esc(s.name ?? `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`))
   .onPointClick((s) => selectSite(s))
   // Notable landing sites from /sites
@@ -130,7 +142,7 @@ const globe = new Globe(globeEl)
   .labelSize((s) => zs(s.kind === 'ice' ? (s.rating === 'known' ? 0.8 : 0.6) : s.kind === 'region' ? 1.1 : 0.9))
   .labelDotRadius((s) => zs(s.kind === 'ice' ? 0.35 : s.kind === 'region' ? 0.3 : 0.45))
   .labelResolution(2)
-  .labelColor((s) => (s.kind === 'ice' ? ICE_COLORS[s.rating] : s.kind === 'region' ? (s.within_ice_range ? '#a8e0ff' : '#5dff9b') : statusColor(s)))
+  .labelColor((s) => (s.kind === 'ice' ? ICE_COLORS[s.rating] : s.kind === 'region' ? (s.within_ice_range ? '#ff8a1f' : '#ffffff') : statusColor(s)))
   .labelLabel((s) => (s.kind === 'ice' ? craterTooltip(s)
     : s.kind === 'region' ? regionTooltip(s)
       : `<b>${esc(s.name)}</b><br>${esc(s.place)}<br>${esc(s.date)} · ${esc(s.status)}`))
@@ -240,7 +252,42 @@ function resizeGlobe() {
 window.addEventListener('resize', resizeGlobe);
 resizeGlobe();
 
+// Draw a site plan (GET /site/plan, via the 3D view) on the globe for the selected site.
+function showPlanOnGlobe(site, plan) {
+  state.planSite = site;
+  const paths = [];
+  if (plan.route?.latlon?.length > 1) {
+    paths.push({ coords: plan.route.latlon, color: '#ffffff', stroke: 1.2, dash: 1, gap: 0,
+      label: `Drivable route solar ↔ comms: ${(plan.route.drive_m / 1000).toFixed(1)} km` });
+  }
+  if (plan.ice) {
+    if (plan.ice.route?.latlon?.length > 1) {
+      paths.push({ coords: plan.ice.route.latlon, color: '#7fd0ff', stroke: 1.2, dash: 1, gap: 0,
+        label: `Drivable route toward ${plan.ice.name ?? 'ice'}: ${(plan.ice.route.drive_m / 1000).toFixed(1)} km` });
+    }
+    paths.push({ coords: greatCircle(site.lat, site.lng, plan.ice.lat, plan.ice.lon), color: '#7fd0ff', stroke: 1,
+      dash: 0.02, gap: 0.012,
+      label: `Nearest ice: ${plan.ice.name ?? 'cold-trap cell'}, ${(plan.ice.distance_m / 1000).toFixed(1)} km (straight line)` });
+  }
+  globe.pathsData(paths);
+}
+
+// Points along the great circle between two lat/lon points (for the globe's paths layer).
+function greatCircle(lat1, lon1, lat2, lon2, n = 64) {
+  const u = (la, lo) => [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)];
+  const r = Math.PI / 180;
+  const a = u(lat1 * r, lon1 * r), b = u(lat2 * r, lon2 * r);
+  const w = Math.acos(Math.min(1, Math.max(-1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])));
+  if (w < 1e-9) return [[lat1, lon1], [lat2, lon2]];
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const t = i / n, s1 = Math.sin((1 - t) * w) / Math.sin(w), s2 = Math.sin(t * w) / Math.sin(w);
+    const p = a.map((x, k) => s1 * x + s2 * b[k]);
+    return [Math.asin(p[2]) / r, Math.atan2(p[1], p[0]) / r];
+  });
+}
+
 function refreshPoints() {
+  if (state.planSite && state.planSite !== state.current) { state.planSite = null; globe.pathsData([]); }
   const points = [...state.sites];
   if (state.current && !points.includes(state.current)) points.push(state.current);
   globe.pointsData(points);
@@ -416,32 +463,6 @@ async function newSite(lat, lng, catalog = null, extra = {}, { background = fals
   return site;
 }
 
-// "Get detailed terrain": download ~30 m LOLA around the site, then re-evaluate with it.
-async function getDetailedTerrain(site = state.current) {
-  if (!site || site.terrainLevel === 'detailed') return site;
-  showError(null);
-  $('detail-status').textContent = 'Downloading detailed LOLA terrain from NASA PDS… (a few seconds)';
-  $('get-detail-btn').disabled = true;
-  try {
-    const res = await fetch(`/terrain/detail?lat=${site.lat}&lon=${site.lng}`, { method: 'POST' });
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.detail ?? `HTTP ${res.status}`);
-    site.terrainLevel = 'detailed';
-    $('detail-status').textContent = body.cached
-      ? 'Detailed terrain loaded from cache. Recalculating…'
-      : `Downloaded ${body.product} in ${body.seconds} s. Recalculating…`;
-    const result = await evaluateSite(site);
-    if (result) site.result = result;
-    $('detail-status').textContent = '';
-  } catch (err) {
-    $('detail-status').textContent = '';
-    showError(`Detailed terrain failed: ${err.message}`);
-  } finally {
-    $('get-detail-btn').disabled = false;
-    render();
-  }
-  return site;
-}
 
 function pickCatalogSite(s) {
   newSite(s.lat, s.lon, s);
@@ -495,25 +516,31 @@ function showLanding(show = true) {
 // 2. Landing page over the close-up (about a quarter of the Moon in view).
 // 3. After the requirements (or "Skip"): zoom out to the whole Moon; the menus fade in.
 
-const CLOSE_VIEW = { lat: -18, lng: 25, altitude: 0.6 };    // roughly a quarter of the Moon
+const CLOSE_VIEW = { lat: -18, lng: 25, altitude: 1.35 };   // the Moon fills the height, shifted right (CSS) so the Earth fits on the left
 const FULL_VIEW_ALTITUDE = 2.4;
 
 // Opening shadow reveal: the Moon starts as a thin crescent and the shadow sweeps off it as the
 // light swings from behind the Moon round to the viewer (like a phase from crescent to full).
 // The light follows the slowly turning camera until the app is revealed.
-const REVEAL_MS = 5600;
+// The Moon starts fully black beside a lit Earth; the title fades in on the same clock.
+const REVEAL_DELAY_MS = 600;
+const REVEAL_MS = 5000;
 function startShadowReveal() {
   state.introLight = true;
   if (!defaultLighting.parent) defaultLighting.parent = sunLight.parent;
   globe.scene().add(sunLight);
-  ambientLight.intensity = 0.06;          // a little "earthshine" so the dark side isn't pure black
+  ambientLight.intensity = 0;
   sunLight.intensity = 3.4;
-  const t0 = performance.now();
+  const title = document.querySelector('.intro-title');
+  const t0 = performance.now() + REVEAL_DELAY_MS;
   const step = (now) => {
     if (!state.introLight) return;
-    const f = Math.min(1, (now - t0) / REVEAL_MS);
+    const f = Math.min(1, Math.max(0, (now - t0) / REVEAL_MS));
     const e = f < 0.5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;      // ease in-out
-    const theta = ((172 - 150 * e) * Math.PI) / 180;    // angle between viewer and light, seen from the Moon
+    const theta = ((180 - 158 * e) * Math.PI) / 180;    // angle between viewer and light, seen from the Moon
+    ambientLight.intensity = 0.06 * e;                   // faint earthshine fills in as it lights up
+    title.style.opacity = String(e);
+    title.style.filter = `blur(${(12 * (1 - e)).toFixed(2)}px)`;
     const cam = globe.camera().position;
     const len = Math.hypot(cam.x, cam.y, cam.z) || 1;
     const v = [cam.x / len, cam.y / len, cam.z / len];
@@ -535,6 +562,7 @@ function endShadowReveal() {
 }
 
 function startIntro() {
+  try { state.stopEarth = startIntroEarth($('intro-earth')); } catch (err) { console.warn('Intro Earth unavailable', err); }
   startShadowReveal();
   document.body.classList.add('intro-mode');
   globe.pointOfView(CLOSE_VIEW, 0);
@@ -579,6 +607,8 @@ function choosePlan() {
 function revealApp() {
   state.revealed = true;
   endShadowReveal();
+  setTimeout(() => { state.stopEarth?.(); state.stopEarth = null; }, 1300);   // after the Earth fades out
+  setTimeout(() => { document.body.classList.remove('globe-wide'); resizeGlobe(); }, 1700);  // after the slide back
   globe.controls().autoRotate = false;
   const pov = globe.pointOfView();
   globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: FULL_VIEW_ALTITUDE }, 1600);
@@ -619,6 +649,7 @@ async function onFind(e) {
     state.period = { mode: 'range', start: body.period_start, end: body.period_end };
     syncPeriodInputs();
     showLanding(false);
+    setPanelCollapsed(false);            // results are in the right panel: always open it
     $('req-status').textContent = '';
     renderSearch();
     showTab('search');
@@ -838,6 +869,7 @@ async function onOpen3d(initialT = 0) {
     landed,
     level: site.terrainLevel ?? 'global',
     initialT,
+    onPlan: (plan) => { if (state.current === site) showPlanOnGlobe(site, plan); },
   });
 }
 
@@ -958,7 +990,6 @@ function render() {
     $('sky-now').innerHTML = '';
     $('site-tiles').innerHTML = '';
     $('site-terrain').innerHTML = '';
-    $('get-detail-btn').hidden = true;
     $('result-section').hidden = true;
     $('view3d-btn').disabled = true;
     $('compare-btn').disabled = true;
@@ -974,10 +1005,6 @@ function render() {
     `<span class="muted">${placeholder ? 'PLACEHOLDER terrain' : `NASA LOLA, ~${t.resolution_m.toFixed(0)} m pixels`}` +
     ` · skyline up to ${t.skyline_max_deg.toFixed(1)}°</span>`;
   $('site-terrain').title = `Horizons is given the site's LOLA elevation (${t.site_elevation_m.toFixed(0)} m) as its altitude.`;
-  $('get-detail-btn').hidden = detailed;
-  $('get-detail-btn').textContent = t.detailed_cached
-    ? 'Use detailed terrain (already downloaded)'
-    : 'Get detailed terrain (LOLA ~30 m, a few seconds)';
 
   // Sun and Earth right now, plus time to the next rise/set.
   $('sky-now').innerHTML = skyNow(r);
@@ -1133,7 +1160,6 @@ $('lander-select').addEventListener('change', onLanderChange);
 $('evaluate-btn').addEventListener('click', onEvaluate);
 $('compare-btn').addEventListener('click', onAddToComparison);
 $('view3d-btn').addEventListener('click', () => onOpen3d());
-$('get-detail-btn').addEventListener('click', () => getDetailedTerrain());
 $('show-sites').addEventListener('change', refreshLabels);
 $('real-sun').addEventListener('change', applyGlobeSky);
 $('period-start').value = state.period.start;

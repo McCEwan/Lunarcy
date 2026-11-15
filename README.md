@@ -34,7 +34,7 @@ The Moon Trek textures are already in `web/assets/moontrek/`. Rebuild them with 
 |---|---|
 | API contract, validation, error codes | Done (matches the design doc) |
 | Sun/Earth positions (`api/ephemeris.py`) | **Real:** JPL Horizons, cached, with the site's LOLA elevation as its altitude. Falls back to a labelled approximation offline. |
-| Elevation and slope (`api/lola.py`) | **Real:** NASA LOLA. Global estimate from LDEM_128 (~237 m) everywhere; detailed ~30 m on demand (Site tab, "Get detailed terrain"). |
+| Elevation and slope (`api/lola.py`) | **Real:** NASA LOLA. Global estimate from LDEM_128 (~237 m) everywhere; detailed ~30 m through the API (`POST /terrain/detail`, `level=detailed`). |
 | Terrain blocking the Sun/Earth | **Real:** skyline from LOLA applies to sunlight %, power, comms, windows and rise/set times (flat-horizon values shown alongside). |
 | Globe day/night + Sun/Earth markers | **Real** directions from Horizons sub-solar/sub-Earth points (markers not to scale). |
 | Temperature | **Real:** NASA LRO Diviner night low / day high per 0.5° cell (`scripts/fetch_diviner.py`). Falls back to a labelled placeholder if not downloaded. |

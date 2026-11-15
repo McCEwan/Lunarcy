@@ -190,6 +190,32 @@ class IceMap:
             out[i:i + chunk] = MOON_R_KM * np.arccos(np.clip(best, -1.0, 1.0))
         return out
 
+    def nearest_target(self, lat: float, lon: float) -> dict | None:
+        """The nearest ice target (likely cell or known/likely crater floor), described."""
+        if not self.target_lat.size:
+            return None
+        d = great_circle_km(lat, lon, self.target_lat, self.target_lon)
+        i = int(np.argmin(d))
+        tlat, tlon = float(self.target_lat[i]), float(self.target_lon[i])
+        # The crater this target lies in: its floor point, or a known/likely crater within its rim.
+        good = [c for c in self.craters if c["rating"] in ("known", "likely")]
+        crater = next((c for c in good if abs(c["floor_lat"] - tlat) < 1e-6 and abs(c["floor_lon"] - tlon) < 1e-6), None)
+        if crater is None:
+            inside = [c for c in good
+                      if float(great_circle_km(tlat, tlon, c["lat"], c["lon"])) <= c["diameter_km"] / 2]
+            crater = min(inside, key=lambda c: c["diameter_km"], default=None)
+        if crater and crater.get("evidence"):
+            basis = f"Published ice evidence in {crater['name']}: {crater['evidence']['summary']} ({crater['evidence']['citation']})"
+        elif crater:
+            basis = (f"{crater['name']} floor: permanently shadowed (LOLA) and ≤{ICE_STABLE_K:.0f} K (Diviner); "
+                     "ice could survive here, not a detection")
+        else:
+            basis = (f"Cold-trap cell: permanently shadowed (LOLA) and ≤{ICE_STABLE_K:.0f} K (Diviner); "
+                     "ice could survive here, not a detection")
+        return {"lat": round(tlat, 4), "lon": round(tlon, 4), "distance_km": round(float(d[i]), 2),
+                "name": crater["name"] if crater else None,
+                "rating": crater["rating"] if crater else "likely", "basis": basis}
+
     def nearest_crater(self, lat: float, lon: float) -> dict | None:
         good = [c for c in self.craters if c["rating"] in ("known", "likely")]
         if not good:

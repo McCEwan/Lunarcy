@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +18,9 @@ from .evaluator import evaluate
 from .lola import DetailedHeights, DetailStore, LolaGlobalHeights
 from .finder import Criteria, Skylines, find_regions
 from .ice import IceMap
+from .siteplan import plan_site
+from . import ephemeris
+from .evaluator import LUNAR_DAY_DAYS
 from .models import EvaluateRequest, EvaluateResponse, FindRequest
 from .patch import SyntheticHeights, horizon_profile, terrain_patch
 from .paths import PROJECT_DATA, big_data_dir, lola_detail_dir, lola_dir
@@ -187,6 +190,36 @@ def ice() -> dict:
     if isinstance(GLOBAL_HEIGHTS, SyntheticHeights) or not TERRAIN.real:
         out["sources"].append("PLACEHOLDER: synthetic terrain or placeholder temperatures in use; "
                               "crater depths, shadows and cold traps are not real")
+    return out
+
+
+@app.get("/site/plan")
+def site_plan(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+    start: date | None = None,
+    end: date | None = None,
+    level: str = Query("global", pattern="^(global|detailed)$"),
+) -> dict:
+    """Solar array and comms hub spots near a landing site, the drivable route between them,
+    and the way to the nearest ice candidate (api/siteplan.py). Period: start..end (UTC dates,
+    inclusive), default the next lunar day."""
+    if end and start and end < start:
+        raise HTTPException(422, detail="end must not be before start")
+    first = start or datetime.now(timezone.utc).date()
+    days = (end - first).days + 1 if end else LUNAR_DAY_DAYS
+    heights = heights_for(lat, lon, level)
+    site_alt = float(heights.heights(np.array(lat), np.array(lon)))
+    sky = EPHEM.sky(lat, lon, ephemeris.time_grid(first, days, 1.0), alt_m=site_alt)
+    try:
+        ice_src = ice_map()
+    except Exception:
+        log.exception("Ice map unavailable for the site plan")
+        ice_src = None
+    out = plan_site(heights, lat, lon, sky, ice_src, level=level)
+    out["period"] = {"start": f"{first}T00:00Z", "days": round(days, 2)}
+    if isinstance(heights, SyntheticHeights) or (ice_src is not None and not TERRAIN.real):
+        out["sources"].append("PLACEHOLDER data in use: the plan is not based on real terrain/temperatures")
     return out
 
 

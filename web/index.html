@@ -19,8 +19,10 @@
     }
   </script>
 </head>
-<body class="intro-mode">
+<body class="intro-mode globe-wide">
   <div id="globe"></div>
+  <!-- The Earth beside the Moon on the opening screens (web/intro_earth.js) -->
+  <div id="intro-earth" aria-hidden="true"></div>
 
   <!-- Intro: the Moon, the title fading in, "Press Enter to continue" -->
   <div id="intro" role="button" tabindex="0" aria-label="Press Enter to continue">
@@ -130,7 +132,7 @@
       <div><span class="swatch ice-ok outlined"></span>Meets every requirement, ice within range</div>
       <div><span class="swatch good outlined"></span>Meets every requirement, no ice within range</div>
       <div><span class="swatch warn"></span>Marginal: within 85% of every threshold</div>
-      <div class="muted">#1–#10 = best regions · darker = outside the search area</div>
+      <div class="muted">#1–#10 = best regions (<b style="color:#ff8a1f">orange</b> = within ice range) · darker = outside the search area</div>
       <div class="small muted" style="margin-top:6px">Site stats:</div>
       <div><span class="swatch good"></span>Comfortably within limits</div>
       <div><span class="swatch warn"></span>Close to a limit</div>
@@ -177,8 +179,6 @@
         <h2 id="site-title"></h2>
         <div id="site-meta" class="small"></div>
         <div id="site-terrain" class="small site-terrain"></div>
-        <button id="get-detail-btn" class="secondary" hidden>Get detailed terrain</button>
-        <div id="detail-status" class="small muted"></div>
         <div id="sky-now" class="sky-now"></div>
         <div id="site-period" class="small muted"></div>
         <div class="tiles" id="site-tiles"></div>
@@ -252,12 +252,14 @@
           <button class="chip" data-view="sun">Stand here · face Sun</button>
           <button class="chip" data-view="earth">Stand here · face Earth</button>
         </span>
+        <button id="v3d-plan-toggle" class="chip on" title="Solar array, comms hub, routes and the way to ice">Site plan</button>
         <span id="v3d-level" class="small"></span>
         <button id="v3d-close" class="chip" title="Close (Esc)">✕ Close</button>
       </div>
     </div>
     <div id="v3d-canvas"></div>
     <div id="v3d-hud"></div>
+    <div id="v3d-plan" hidden></div>
     <div class="v3d-bottom">
       <button id="v3d-play">▶ Play</button>
       <select id="v3d-speed" title="Simulated hours per second">
