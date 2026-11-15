@@ -135,6 +135,8 @@ a { color: var(--accent); }
 .swatch.good, .dot.good { background: var(--pass); }
 .swatch.warn, .dot.warn { background: var(--warn); }
 .swatch.bad, .dot.bad { background: var(--fail); }
+.swatch.ice-ok { background: rgb(120, 205, 255); }
+.swatch.outlined { outline: 2px solid #fff; outline-offset: 1px; }
 .dot.none { background: var(--line); }
 
 /* Rated stat tiles */
@@ -367,6 +369,33 @@ body.intro-mode #left-col, body.intro-mode #legend, body.intro-mode #panel {
 @keyframes landing-in { from { opacity: 0; } to { opacity: 1; } }
 .landing-card { background: rgba(15, 20, 32, .74); backdrop-filter: blur(10px); }
 
+/* ===== Start screen: two big choices ===== */
+#choice {
+  position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; padding: 16px;
+  background: radial-gradient(ellipse at center, rgba(5, 7, 13, .1) 20%, rgba(5, 7, 13, .7) 100%);
+  animation: landing-in .6s ease;
+}
+.choice-wrap { width: min(720px, 100%); text-align: center; }
+.choice-wrap h2 {
+  margin: 0 0 22px; font-weight: 300; font-size: clamp(22px, 4vw, 32px); letter-spacing: .04em;
+  color: #f2f4fa; text-shadow: 0 0 18px rgba(0, 0, 0, .9);
+}
+.choice-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.choice-card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0; padding: 26px 22px;
+  background: rgba(15, 20, 32, .74); backdrop-filter: blur(10px); color: var(--text);
+  border: 1px solid var(--line); border-radius: 14px; font-weight: 400; font-size: 14px; line-height: 1.4;
+  transition: border-color .15s, transform .15s, background .15s;
+}
+.choice-card b { font-size: 19px; font-weight: 600; color: #fff; }
+.choice-card span:last-child { color: var(--muted); }
+.choice-icon { font-size: 34px; line-height: 1; }
+.choice-card:hover, .choice-card:focus-visible {
+  border-color: var(--accent); background: rgba(22, 30, 48, .85); transform: translateY(-2px); outline: none;
+}
+@media (max-width: 560px) { .choice-buttons { grid-template-columns: 1fr; } }
+.landing-links { display: flex; justify-content: space-between; gap: 12px; }
+
 /* ===== More translucent menus (the Moon shows through) ===== */
 #globe { inset: 0 !important; }            /* full screen, behind the panel too */
 #panel { background: rgba(15, 20, 32, .6); backdrop-filter: blur(8px); border-left-color: rgba(38, 48, 73, .6); }
@@ -377,3 +406,32 @@ body.intro-mode #left-col, body.intro-mode #legend, body.intro-mode #panel {
 #v3d-hud { background: rgba(15, 20, 32, .6); backdrop-filter: blur(6px); }
 #panel { z-index: 5; }                      /* above the globe's Sun/Earth marker layer */
 #left-col, #legend { z-index: 4; }
+
+.region-list .stats .ice-ok { color: rgb(140, 210, 255); }
+
+/* ===== Grand type for the opening screens (Cinzel: classical Roman capitals) ===== */
+:root {
+  --display: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  --display-sub: 'Cormorant Garamond', Georgia, serif;
+}
+.intro-title {
+  font-family: var(--display); font-weight: 400; letter-spacing: .28em; padding-left: .28em;
+  font-size: clamp(54px, 11vw, 136px);
+  text-shadow: 0 0 50px rgba(190, 210, 255, .35), 0 2px 18px rgba(0, 0, 0, .8);
+}
+.intro-sub { font-family: var(--display); font-size: 14px; letter-spacing: .42em; }
+.choice-wrap h2 {
+  font-family: var(--display); font-weight: 500; letter-spacing: .16em; text-transform: uppercase;
+  font-size: clamp(20px, 3.4vw, 30px);
+}
+.choice-card b { font-family: var(--display); font-weight: 600; font-size: 20px; letter-spacing: .08em; }
+.choice-card span:last-child { font-family: var(--display-sub); font-size: 17px; line-height: 1.35; }
+.landing-card h1 {
+  font-family: var(--display); font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  font-size: clamp(20px, 3.2vw, 27px); margin-bottom: 8px;
+}
+.landing-card > p.muted:first-of-type { font-family: var(--display-sub); font-size: 17px; line-height: 1.4; }
+.landing-card button[type=submit] { font-family: var(--display); letter-spacing: .14em; text-transform: uppercase; font-weight: 700; }
+/* Title emerges as the light reaches the Moon (shadow reveal in web/app.js, ~5.6 s) */
+.intro-title { animation: intro-title 3.6s ease-out 1.2s forwards; }
+.intro-sub { animation: intro-sub 1.2s ease 4.6s forwards, intro-pulse 2.4s ease-in-out 5.8s infinite; }

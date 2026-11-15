@@ -17,6 +17,7 @@ from .ephemeris import AnalyticEphemeris, HorizonsEphemeris
 from .evaluator import evaluate
 from .lola import DetailedHeights, DetailStore, LolaGlobalHeights
 from .finder import Criteria, Skylines, find_regions
+from .ice import IceMap
 from .models import EvaluateRequest, EvaluateResponse, FindRequest
 from .patch import SyntheticHeights, horizon_profile, terrain_patch
 from .paths import PROJECT_DATA, big_data_dir, lola_detail_dir, lola_dir
@@ -168,12 +169,34 @@ def finder_skylines() -> Skylines:
     return _skylines
 
 
+_ice_map: IceMap | None = None
+
+
+def ice_map() -> IceMap:
+    """Cold traps and rated polar craters (api/ice.py), built on first use (~5-10 s)."""
+    global _ice_map
+    if _ice_map is None:
+        _ice_map = IceMap(GLOBAL_HEIGHTS, finder_skylines(), TERRAIN)
+    return _ice_map
+
+
+@app.get("/ice")
+def ice() -> dict:
+    """Where water ice could survive: cold-trap grid and rated named polar craters."""
+    out = ice_map().to_dict()
+    if isinstance(GLOBAL_HEIGHTS, SyntheticHeights) or not TERRAIN.real:
+        out["sources"].append("PLACEHOLDER: synthetic terrain or placeholder temperatures in use; "
+                              "crater depths, shadows and cold traps are not real")
+    return out
+
+
 @app.post("/find")
 def find(req: FindRequest) -> dict:
     """Search the whole Moon for regions meeting the mission requirements (api/finder.py)."""
     crit = Criteria(req.period_start, req.period_end, req.min_sun_pct, req.min_earth_pct,
-                    req.min_avg_w_m2, req.max_slope_deg, req.region)
-    return find_regions(crit, EPHEM, GLOBAL_HEIGHTS, finder_skylines())
+                    req.min_avg_w_m2, req.max_slope_deg, req.region, req.goal, req.max_ice_km)
+    return find_regions(crit, EPHEM, GLOBAL_HEIGHTS, finder_skylines(),
+                        ice=ice_map() if req.goal == "ice_craters" else None)
 
 
 @app.post("/evaluate", response_model=EvaluateResponse, response_model_by_alias=True)

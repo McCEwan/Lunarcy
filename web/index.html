@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lunar Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&display=swap">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.46.2/dist/globe.gl.min.js"></script>
   <!-- three.js as ES modules for the 3D site view (web/site3d.js) -->
@@ -16,13 +19,32 @@
     }
   </script>
 </head>
-<body>
+<body class="intro-mode">
   <div id="globe"></div>
 
   <!-- Intro: the Moon, the title fading in, "Press Enter to continue" -->
   <div id="intro" role="button" tabindex="0" aria-label="Press Enter to continue">
     <h1 class="intro-title">Lunarcy</h1>
     <p class="intro-sub">Press Enter to continue</p>
+  </div>
+
+  <!-- Start screen: explore freely, or enter mission requirements -->
+  <div id="choice" hidden>
+    <div class="choice-wrap">
+      <h2>How would you like to start?</h2>
+      <div class="choice-buttons">
+        <button type="button" id="choice-explore" class="choice-card">
+          <span class="choice-icon" aria-hidden="true">🌕</span>
+          <b>Explore the Moon</b>
+          <span>Spin the globe, click anywhere, and browse past and planned landing sites.</span>
+        </button>
+        <button type="button" id="choice-plan" class="choice-card">
+          <span class="choice-icon" aria-hidden="true">🎯</span>
+          <b>Plan a mission</b>
+          <span>Enter your mission requirements and we'll find the best landing regions.</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Landing page: mission requirements for the site finder -->
@@ -32,6 +54,18 @@
       <p class="muted">Tell us what your mission needs. We search the whole Moon, using NASA LOLA terrain and JPL Horizons
         Sun and Earth positions, and show the regions that meet your requirements.</p>
       <form id="req-form">
+        <div class="row2">
+          <label>Mission goal
+            <select id="req-goal">
+              <option value="ice_craters" selected>Check for ice in deep craters</option>
+              <option value="">No specific goal (skip the ice check)</option>
+            </select>
+          </label>
+          <label id="ice-km-wrap">Maximum distance to an ice candidate (km)<input id="req-ice-km" type="number" min="1" max="1000" step="1" value="50"></label>
+        </div>
+        <p id="ice-note" class="small muted">Ice survives only where it stays below ~110 K: permanently shadowed crater floors near the poles.
+          We mark those from NASA LOLA terrain (does the Sun ever clear the rim?) and LRO Diviner temperatures, and rate every named
+          polar crater. A lander needs sunlight and Earth contact, so it lands nearby and a rover drives in.</p>
         <div class="row2">
           <label>Mission start (UTC)<input id="req-start" type="date" min="2025-01-01" max="2050-12-31" required></label>
           <label>Mission end (UTC)<input id="req-end" type="date" min="2025-01-01" max="2050-12-31" required></label>
@@ -47,7 +81,7 @@
         <label>Search area
           <select id="req-region">
             <option value="all">Whole Moon</option>
-            <option value="south">South polar region (below 60°S)</option>
+            <option value="south" selected>South polar region (below 60°S)</option>
             <option value="north">North polar region (above 60°N)</option>
             <option value="nearside">Near side (facing Earth)</option>
             <option value="farside">Far side</option>
@@ -59,7 +93,10 @@
           1,361 W/m² at most).</p>
         <button type="submit" id="req-submit">Find landing regions</button>
         <p id="req-status" class="small"></p>
-        <button type="button" id="skip-landing" class="linklike">Skip, and explore the Moon freely →</button>
+        <div class="landing-links">
+          <button type="button" id="back-to-choice" class="linklike">← Back</button>
+          <button type="button" id="skip-landing" class="linklike">Skip, and explore the Moon freely →</button>
+        </div>
       </form>
     </div>
   </div>
@@ -75,6 +112,7 @@
         <div id="layer-buttons"></div>
         <label class="check"><input type="checkbox" id="show-sites" checked> Show notable landing sites</label>
         <label class="check"><input type="checkbox" id="real-sun" checked> Light by the real Sun · show Sun &amp; Earth</label>
+        <label class="check"><input type="checkbox" id="show-ice"> Show polar craters rated for ice</label>
         <label class="check" id="heatmap-toggle-wrap" hidden><input type="checkbox" id="show-heatmap" checked> Show search results on the globe</label>
         <div id="sky-caption" class="small muted"></div>
       </div>
@@ -88,9 +126,16 @@
       <button class="collapse-btn" data-collapse="legend" title="Hide">▾</button>
     </div>
     <div class="collapse-body">
-      <div><span class="swatch good"></span>Comfortably within limits · meets all requirements</div>
-      <div><span class="swatch warn"></span>Close to a limit · nearly meets them</div>
+      <div class="small muted">Search results on the globe:</div>
+      <div><span class="swatch ice-ok outlined"></span>Meets every requirement, ice within range</div>
+      <div><span class="swatch good outlined"></span>Meets every requirement, no ice within range</div>
+      <div><span class="swatch warn"></span>Marginal: within 85% of every threshold</div>
+      <div class="muted">#1–#10 = best regions · darker = outside the search area</div>
+      <div class="small muted" style="margin-top:6px">Site stats:</div>
+      <div><span class="swatch good"></span>Comfortably within limits</div>
+      <div><span class="swatch warn"></span>Close to a limit</div>
       <div><span class="swatch bad"></span>Outside the limit / poor</div>
+      <div class="muted">Crater labels: <b style="color:#4da3ff">published ice evidence</b> · <span style="color:#a9cfff">likely cold trap</span></div>
       <div class="muted">Hover a stat to see its thresholds. Grey = not rated.</div>
     </div>
   </div>
@@ -208,7 +253,6 @@
           <button class="chip" data-view="earth">Stand here · face Earth</button>
         </span>
         <span id="v3d-level" class="small"></span>
-        <button id="v3d-detail" class="chip" hidden>Get detailed terrain</button>
         <button id="v3d-close" class="chip" title="Close (Esc)">✕ Close</button>
       </div>
     </div>

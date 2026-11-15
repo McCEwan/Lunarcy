@@ -2,6 +2,7 @@ fastapi>=0.115
 uvicorn>=0.30
 pydantic>=2.9
 numpy>=2.1
+certifi>=2024.8   # CA bundle for HTTPS (python.org macOS Python has none)
 pillow>=11.0     # scripts/fetch_moontrek_layers.py only
 
 # dev

@@ -41,8 +41,8 @@ export async function open3dView(opts) {
 }
 
 class SiteView {
-  constructor({ title, lat, lon, result, landed, level = 'global', initialT = 0, onRequestDetail = null }) {
-    Object.assign(this, { title, lat, lon, result, landed, level, onRequestDetail });
+  constructor({ title, lat, lon, result, landed, level = 'global', initialT = 0 }) {
+    Object.assign(this, { title, lat, lon, result, landed, level });
     this.series = result.sky;
     this.sunPerM2 = result.power_w.map((p) => p.w_m2);   // sunlight on a flat panel, W/m²
     this.t = Math.min(initialT, this.series.length - 1);   // fractional index into the hourly series
@@ -68,10 +68,6 @@ class SiteView {
     document.getElementById('v3d-level').innerHTML = detailed
       ? '<span class="badge pass">Detailed terrain</span>'
       : '<span class="badge level">Global estimate</span>';
-    const detailBtn = document.getElementById('v3d-detail');
-    detailBtn.hidden = detailed || !this.onRequestDetail;
-    detailBtn.disabled = false;
-    detailBtn.textContent = 'Get detailed terrain';
 
     const q = `lat=${this.lat}&lon=${this.lon}&level=${this.level}`;
     const n = detailed ? 2 * PATCH_N - 1 : PATCH_N;   // ~39 m vertices for detailed data
@@ -276,13 +272,6 @@ class SiteView {
     on($('v3d-speed'), 'change', (e) => { this.speed = Number(e.target.value); });
     on(scrub, 'input', (e) => { this.t = Number(e.target.value); this.update(); });
     on($('v3d-close'), 'click', () => this.close());
-    on($('v3d-detail'), 'click', (e) => {
-      if (!this.onRequestDetail) return;
-      e.target.disabled = true;
-      e.target.textContent = 'Downloading detailed LOLA terrain…';
-      this.playing = false;
-      this.onRequestDetail(this.t);   // the app re-evaluates and reopens this view at the same moment
-    });
     on($('v3d-views'), 'click', (e) => { const v = e.target.dataset?.view; if (v) this.setView(v); });
     on(document, 'keydown', (e) => {
       if (this.el.hidden) return;
