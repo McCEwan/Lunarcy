@@ -399,6 +399,16 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the challenge page (spaceappschallenge.org) could not be read from the cloud session (TLS certificate rejected by the proxy), so the Relevance slide is not yet checked against the challenge text. Slide 6 says global terrain is ~237 m (LDEM_128); the screenshots used LDEM_64 (~474 m).
 
+### 2026-11-15 · Session 26: 11-slide deck from the presentation script (branch `docs/pitch-deck`)
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill, Playwright
+- **Prompted with:** the team's presentation script (11 paragraphs); one slide per paragraph, no slide limit, criteria titles (Relevance, Creativity, Impact, Validity).
+- **What the AI did:** merged the latest `main` into the pitch branch; ran the updated app on real data (JPL Horizons, LOLA LDEM_64 + ~30 m detail, Diviner, ice ratings) and retook screenshots (title screen, start screen, ice-goal search, Site tab, 3D site plan, standing view); rebuilt `Lunarcy_pitch.pptx` as 11 slides with the script as speaker notes. Fixed "deploy an unmanned lander to earth" to "to the Moon" in the notes.
+- **Checks the AI ran on its own output:** file validator passes; every slide rendered and checked; the numbers shown on slides (572 m route, 3.7°, 42.7 km to Amundsen C, 66 %/89 %) come from the app's own output for search result #1 (15–29 Dec 2026, south polar region).
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the Jeremy Hansen line follows the script and was not re-checked. "Under a minute" for a whole-Moon search comes from one run (30.5 s with the ice goal). The challenge page still could not be read from the cloud session.
+
 ---
 
 ## Entry template
