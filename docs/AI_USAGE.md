@@ -217,6 +217,16 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **Follow-up (same session):** slides 3–7 reorganised into Relevance, Impact, Creativity, Validity, then Toronto/Canadian impact with the low-colour design choices; slides 1–2 unchanged.
 - **Still unverified / known limits:** "Lunarcy could help Ontario's rover teams" is a pitch claim; no rover team has been contacted. The screenshots still come from a PLACEHOLDER-terrain run.
 
+### 2026-11-15 · Session 12: slide titles and real-data screenshots (branch `docs/pitch-deck`)
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), cloud session, PowerPoint skill, Playwright
+- **Prompted with:** title slides 3–6 Relevance, Impact, Creativity and Validity; use the challenge page for the Relevance slide; update the screenshots of Lunarcy.
+- **What the AI did:** set the four one-word titles with a short orange tagline; downloaded LOLA LDEM_64 and built the Diviner grids in the cloud session; ran the app on JPL Horizons, LOLA (including ~30 m detailed terrain) and Diviner, and retook the screenshots (Impact: search result #1 with its stats; Creativity: standing at the site facing the Sun in the 3D view).
+- **Checks the AI ran on its own output:** the site panel showed real sources (Horizons, LOLA ~474 m global and ~30 m detail, Diviner 84–317 K); deck passes the validator; changed slides rendered and checked.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the challenge page (spaceappschallenge.org) could not be read from the cloud session (TLS certificate rejected by the proxy), so the Relevance slide is not yet checked against the challenge text. Slide 6 says global terrain is ~237 m (LDEM_128); the screenshots used LDEM_64 (~474 m).
+
 ---
 
 ## Entry template
