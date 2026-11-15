@@ -398,6 +398,8 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **Checks the AI ran on its own output:** in the browser: no beacon points or tags after hovering Apollo 11, and its label turned white. Start screen shows "Explore the Moon" and "Plan a mission". Explore mode: Learn tab and tour button visible, tour opens. After "change mode" → Plan a mission: Learn tab and tour button hidden, tour closed; Equator vs pole still available. No console errors.
 - **What a human checked:** _[fill in]_
 - **Follow-up:** the user asked to keep the whole "Learn by exploring" box in Explore mode only. It is now `.explore-only`; leaving Explore also closes Equator vs pole and resets the time-lapse to the real Sun now. Checked: box visible in Explore, hidden in planning; a playing time-lapse stopped and the normal lighting returned (ambient 1.8).
+- **Second follow-up:** the start-screen cards now say who each mode is for: "For hobbyists and students" under Explore the Moon, "For enthusiasts and professionals" under Plan a mission (small Cinzel capitals); checked in a screenshot.
+- **Third follow-up:** in the Site tab, "Open 3D view" and "Add to comparison" moved to the top (under the site name) and "Why this site was recommended" moved to the bottom; checked the element order and a screenshot.
 - **Still unverified / known limits:** none new.
 
 ---

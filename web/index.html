@@ -37,10 +37,12 @@
       <div class="choice-buttons">
         <button type="button" id="choice-explore" class="choice-card">
           <b>Explore the Moon</b>
+          <span class="choice-for">For hobbyists and students</span>
           <span>Spin the globe, click anywhere, browse landing sites, take a guided tour and learn why the poles are so hard.</span>
         </button>
         <button type="button" id="choice-plan" class="choice-card" style="order:2">
           <b>Plan a mission</b>
+          <span class="choice-for">For enthusiasts and professionals</span>
           <span>Enter your mission requirements and we'll find the best landing regions.</span>
         </button>
       </div>
@@ -226,15 +228,14 @@
       <section id="site-section" hidden>
         <h2 id="site-title"></h2>
         <div id="site-meta" class="small"></div>
-        <details id="site-why" class="insight why-box" open hidden></details>
-        <div id="site-terrain" class="small site-terrain"></div>
-        <div id="sky-now" class="sky-now"></div>
-        <div id="site-period" class="small muted"></div>
-        <div class="tiles" id="site-tiles"></div>
         <div class="btn-row">
           <button id="view3d-btn" disabled>Open 3D view</button>
           <button id="compare-btn" class="secondary" disabled>Add to comparison</button>
         </div>
+        <div id="site-terrain" class="small site-terrain"></div>
+        <div id="sky-now" class="sky-now"></div>
+        <div id="site-period" class="small muted"></div>
+        <div class="tiles" id="site-tiles"></div>
         <div id="sky-panel" class="sky-panel"></div>
         <details id="dates-box" class="insight">
           <summary>Best landing dates <span class="muted">· what if the schedule slips?</span></summary>
@@ -256,6 +257,7 @@
         </details>
         <button id="share-btn" type="button" class="linklike small">Copy a link to this site and dates</button>
         <div id="site-links" class="links small"></div>
+        <details id="site-why" class="insight why-box" open hidden></details>
       </section>
 
       <details id="sources-box" hidden>
