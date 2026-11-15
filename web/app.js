@@ -24,6 +24,7 @@ const state = {
   sites: [],         // comparison list: { id, lat, lng, name, catalog, lander, payload, landingDate, landingTime, result }
   current: null,     // the site being worked on (may or may not be in `sites`)
   filter: 'all',
+  ice: null,         // GET /ice (or the `ice` block of a goal search): cold-trap grid + rated craters
   // Analysis period for every site's stats (and the comparison table): one UTC day or a range.
   period: { mode: 'day', start: new Date().toISOString().slice(0, 10), end: null },
 };
@@ -92,6 +93,15 @@ function rateStats(site, r) {
 
 // ---- Globe -------------------------------------------------------------------
 
+// Pins and labels keep a constant on-screen size: their sizes (in degrees on the globe) are
+// multiplied by zoomScale, which follows the camera altitude (1 at the whole-Moon view).
+const ZOOM_REF_ALTITUDE = 2.4;
+let zoomScale = 1;
+const zs = (v) => v * zoomScale;
+// The selected site: hot magenta, which nothing on the grey Moon or in the heatmap uses.
+const PIN_COLOR = '#ff2bd6';
+const PIN = { radius: 1.1, altitude: 0.03, ring: 3.2 };   // degrees / globe radii at the whole-Moon view
+
 const globeEl = $('globe');
 const globe = new Globe(globeEl)
   .globeImageUrl(FALLBACK_TEXTURE)
@@ -101,21 +111,31 @@ const globe = new Globe(globeEl)
   // User-picked sites
   .pointLat('lat')
   .pointLng('lng')
-  .pointAltitude(0.02)
-  .pointRadius(0.8)
-  .pointColor((s) => (s === state.current ? '#ffffff' : landerColor(s.lander)))
+  .pointAltitude((s) => zs(s === state.current ? PIN.altitude : PIN.altitude * 0.6))
+  .pointRadius((s) => zs(s === state.current ? PIN.radius : PIN.radius * 0.7))
+  .pointColor((s) => (s === state.current ? PIN_COLOR : landerColor(s.lander)))
+  // A pulsing ring around the selected site so it's easy to find
+  .ringLat('lat')
+  .ringLng('lng')
+  .ringColor(() => (t) => `rgba(255, 43, 214, ${Math.max(0, 1 - t) * 0.9})`)
+  .ringMaxRadius(() => zs(PIN.ring))
+  .ringPropagationSpeed(() => zs(PIN.ring * 1.4))
+  .ringRepeatPeriod(900)
   .pointLabel((s) => esc(s.name ?? `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`))
   .onPointClick((s) => selectSite(s))
   // Notable landing sites from /sites
   .labelLat('lat')
   .labelLng('lon')
   .labelText('name')
-  .labelSize(0.9)
-  .labelDotRadius(0.45)
+  .labelSize((s) => zs(s.kind === 'ice' ? (s.rating === 'known' ? 0.8 : 0.6) : s.kind === 'region' ? 1.1 : 0.9))
+  .labelDotRadius((s) => zs(s.kind === 'ice' ? 0.35 : s.kind === 'region' ? 0.3 : 0.45))
   .labelResolution(2)
-  .labelColor(statusColor)
-  .labelLabel((s) => `<b>${esc(s.name)}</b><br>${esc(s.place)}<br>${esc(s.date)} · ${esc(s.status)}`)
-  .onLabelClick((s) => pickCatalogSite(s))
+  .labelColor((s) => (s.kind === 'ice' ? ICE_COLORS[s.rating] : s.kind === 'region' ? (s.within_ice_range ? '#a8e0ff' : '#5dff9b') : statusColor(s)))
+  .labelLabel((s) => (s.kind === 'ice' ? craterTooltip(s)
+    : s.kind === 'region' ? regionTooltip(s)
+      : `<b>${esc(s.name)}</b><br>${esc(s.place)}<br>${esc(s.date)} · ${esc(s.status)}`))
+  .onLabelClick((s) => (s.kind === 'ice' ? pickCrater(s)
+    : s.kind === 'region' ? newSite(s.lat, s.lon, null, regionSiteExtra(s.index)) : pickCatalogSite(s)))
   .onGlobeClick(({ lat, lng }) => newSite(lat, lng))
   // Sun and Earth markers (real directions from Horizons, not to scale)
   .htmlLat('lat')
@@ -165,6 +185,7 @@ async function updateGlobeSky() {
 }
 
 function applyGlobeSky() {
+  if (state.introLight) return;          // the opening shadow reveal owns the lights until the app shows
   const sub = state.subpoints;
   const real = $('real-sun').checked && sub;
   if (real) {
@@ -195,6 +216,24 @@ function applyGlobeSky() {
   }
 }
 
+// Re-size pins and labels when the zoom changes by more than ~8% (cheap: a few dozen objects).
+function onCameraChange() {
+  const alt = globe.pointOfView().altitude;
+  const k = Math.min(1, Math.max(0.02, alt / ZOOM_REF_ALTITUDE));
+  if (Math.abs(k - zoomScale) / zoomScale < 0.08) return;
+  zoomScale = k;
+  // New accessor functions make globe.gl rebuild the objects at the new size.
+  globe.pointAltitude((s) => zs(s === state.current ? PIN.altitude : PIN.altitude * 0.6))
+    .pointRadius((s) => zs(s === state.current ? PIN.radius : PIN.radius * 0.7))
+    .ringMaxRadius(() => zs(PIN.ring)).ringPropagationSpeed(() => zs(PIN.ring * 1.4));
+  globe.ringsData([...globe.ringsData()]);
+  globe.labelSize(globe.labelSize()).labelDotRadius(globe.labelDotRadius());
+  globe.labelsData([...globe.labelsData()]);
+  globe.pointsData([...globe.pointsData()]);
+}
+globe.controls().addEventListener('change', onCameraChange);
+if (typeof globe.onZoom === 'function') globe.onZoom(onCameraChange);   // also fires during fly-to animations
+
 function resizeGlobe() {
   globe.width(globeEl.clientWidth).height(globeEl.clientHeight);
 }
@@ -205,12 +244,61 @@ function refreshPoints() {
   const points = [...state.sites];
   if (state.current && !points.includes(state.current)) points.push(state.current);
   globe.pointsData(points);
+  globe.ringsData(state.current ? [state.current] : []);
 }
 
 function refreshLabels() {
   // Hidden during the opening sequence so only the Moon and the title show.
   const show = $('show-sites').checked && state.revealed;
-  globe.labelsData(show ? state.catalog : []);
+  const craters = $('show-ice').checked && state.revealed && state.ice
+    ? state.ice.craters.filter((c) => c.rating === 'known' || c.rating === 'likely')
+      .map((c) => ({ ...c, kind: 'ice' }))
+    : [];
+  const ranks = state.revealed && state.search && $('show-heatmap').checked
+    ? state.search.regions.filter((r) => r.passes_with_terrain).slice(0, 10)
+      .map((r) => ({ ...r, kind: 'region', name: `#${state.search.regions.indexOf(r) + 1}`, index: state.search.regions.indexOf(r) }))
+    : [];
+  globe.labelsData([...(show ? state.catalog : []), ...craters, ...ranks]);
+}
+
+// ---- Ice in deep craters (GET /ice, api/ice.py) ------------------------------------------
+
+const ICE_COLORS = { known: '#4da3ff', likely: '#a9cfff', possible: '#cfd8e3', unlikely: '#8a94a3' };
+const ICE_RATING_TEXT = {
+  known: 'Published ice evidence',
+  likely: 'Likely cold trap: floor permanently shadowed and below 110 K',
+  possible: 'Possible: only one of permanent shadow / below 110 K',
+  unlikely: 'Unlikely: sunlit floor and warmer than 110 K',
+};
+
+function craterTooltip(c) {
+  const ev = c.evidence ? `<br><i>${esc(c.evidence.summary)}</i><br><span class="muted">${esc(c.evidence.citation)}</span>` : '';
+  return `<b>${esc(c.name)}</b> · ${c.diameter_km} km wide, ~${(c.depth_m / 1000).toFixed(1)} km deep<br>` +
+    `${esc(ICE_RATING_TEXT[c.rating])}<br>` +
+    `Floor ${c.floor_shadowed ? 'never sees the Sun' : 'gets some sunlight'} · coldest max ${fmt(c.coldest_tmax_k, 0, ' K')}${ev}`;
+}
+
+function pickCrater(c) {
+  const info = `${ICE_RATING_TEXT[c.rating]}. ${c.diameter_km} km wide, ~${(c.depth_m / 1000).toFixed(1)} km deep. ` +
+    (c.evidence ? `${c.evidence.summary} (${c.evidence.citation})` : '');
+  // Open the crater's deepest floor point: the spot that would hold ice.
+  newSite(c.floor_lat, c.floor_lon, null, { name: `${c.name} (crater floor)`, info });
+}
+
+async function loadIce() {
+  if (state.ice) return state.ice;
+  $('sky-caption').textContent = 'Rating polar craters for ice… (first time takes ~10 s)';
+  try {
+    state.ice = await (await fetch('/ice')).json();
+  } finally {
+    $('sky-caption').textContent = '';
+  }
+  return state.ice;
+}
+
+async function onShowIce() {
+  if ($('show-ice').checked) await loadIce();
+  refreshLabels();
 }
 
 // ---- Map layers (NASA Moon Trek) ---------------------------------------------
@@ -410,7 +498,44 @@ function showLanding(show = true) {
 const CLOSE_VIEW = { lat: -18, lng: 25, altitude: 0.6 };    // roughly a quarter of the Moon
 const FULL_VIEW_ALTITUDE = 2.4;
 
+// Opening shadow reveal: the Moon starts as a thin crescent and the shadow sweeps off it as the
+// light swings from behind the Moon round to the viewer (like a phase from crescent to full).
+// The light follows the slowly turning camera until the app is revealed.
+const REVEAL_MS = 5600;
+function startShadowReveal() {
+  state.introLight = true;
+  if (!defaultLighting.parent) defaultLighting.parent = sunLight.parent;
+  globe.scene().add(sunLight);
+  ambientLight.intensity = 0.06;          // a little "earthshine" so the dark side isn't pure black
+  sunLight.intensity = 3.4;
+  const t0 = performance.now();
+  const step = (now) => {
+    if (!state.introLight) return;
+    const f = Math.min(1, (now - t0) / REVEAL_MS);
+    const e = f < 0.5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;      // ease in-out
+    const theta = ((172 - 150 * e) * Math.PI) / 180;    // angle between viewer and light, seen from the Moon
+    const cam = globe.camera().position;
+    const len = Math.hypot(cam.x, cam.y, cam.z) || 1;
+    const v = [cam.x / len, cam.y / len, cam.z / len];
+    // A direction perpendicular to the view, roughly "to the right": v × world-up, normalised.
+    let side = [-v[2], 0, v[0]];
+    const sl = Math.hypot(...side) || 1;
+    side = side.map((x) => x / sl);
+    const d = v.map((x, i) => x * Math.cos(theta) + side[i] * Math.sin(theta));
+    sunLight.position.set(d[0] * 200, d[1] * 200 + 30, d[2] * 200);
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function endShadowReveal() {
+  if (!state.introLight) return;
+  state.introLight = false;
+  applyGlobeSky();
+}
+
 function startIntro() {
+  startShadowReveal();
   document.body.classList.add('intro-mode');
   globe.pointOfView(CLOSE_VIEW, 0);
   globe.controls().autoRotate = true;
@@ -423,11 +548,37 @@ function leaveIntro() {
   const intro = $('intro');
   if (intro.hidden || intro.classList.contains('leaving')) return;
   intro.classList.add('leaving');
-  setTimeout(() => { intro.hidden = true; showLanding(true); }, 650);
+  setTimeout(() => { intro.hidden = true; showChoice(true); }, 650);
+}
+
+// Start screen: "Explore the Moon" (straight to the app) or "Plan a mission" (requirements form).
+function showChoice(show = true) {
+  $('choice').hidden = !show;
+  if (show) $('choice-plan').focus();
+}
+
+// The ice distance and its explanation only apply to the ice goal.
+function syncGoalFields() {
+  const ice = $('req-goal').value === 'ice_craters';
+  $('ice-km-wrap').hidden = !ice;
+  $('ice-note').hidden = !ice;
+  $('req-ice-km').disabled = !ice;     // a hidden field must not block the form
+}
+
+function chooseExplore() {
+  showChoice(false);
+  showLanding(false);
+  showTab(state.search ? 'search' : 'sites');
+}
+
+function choosePlan() {
+  showChoice(false);
+  showLanding(true);
 }
 
 function revealApp() {
   state.revealed = true;
+  endShadowReveal();
   globe.controls().autoRotate = false;
   const pov = globe.pointOfView();
   globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: FULL_VIEW_ALTITUDE }, 1600);
@@ -446,6 +597,8 @@ async function onFind(e) {
     min_avg_w_m2: Number($('req-power').value || 0),
     max_slope_deg: Number($('req-slope').value || 90),
     region: $('req-region').value,
+    goal: $('req-goal').value || null,      // '' = no goal: skip the ice check
+    max_ice_km: Number($('req-ice-km').value || 50),
   };
   $('req-submit').disabled = true;
   $('req-status').className = 'small muted';
@@ -458,6 +611,9 @@ async function onFind(e) {
       throw new Error(Array.isArray(d) ? d.map((x) => x.msg).join(' · ') : String(d));
     }
     state.search = out;
+    if (out.ice) { state.ice = out.ice; $('show-ice').checked = true; }
+    else $('show-ice').checked = false;          // no goal: the ice check was skipped
+    refreshLabels();
     remember('requirements', JSON.stringify(body));
     // The analysis period follows the mission dates, so site stats match the search.
     state.period = { mode: 'range', start: body.period_start, end: body.period_end };
@@ -500,9 +656,14 @@ function renderSearch() {
     : `Smooth-Moon screen; the top ${s.terrain.checked_in_stage2} regions were re-checked with LOLA terrain.`;
   $('search-summary').innerHTML =
     `<p><b>${esc(c.period_start)} → ${esc(c.period_end)}</b> · ${esc(c.region_label)}</p>` +
+    (c.goal_label ? `<p>Goal: <b>${esc(c.goal_label)}</b> · within ${c.max_ice_km} km of an ice candidate</p>` : '') +
     `<p>Needs ≥${c.min_sun_pct}% daylight · ≥${c.min_earth_pct}% Earth in view · ≥${c.min_avg_w_m2} W/m² average panel sunlight · slope ≤${c.max_slope_deg}°</p>` +
+    (s.ice ? `<p class="muted">Ice candidates: ${s.ice.counts.known_craters} craters with published ice evidence, ` +
+      `${s.ice.counts.likely_craters} more likely cold traps, ${s.ice.counts.likely_cells.toLocaleString()} grid cells both permanently shadowed and below ${s.ice.ice_stable_k} K.</p>` : '') +
     `<p class="muted">${n.meeting_cells.toLocaleString()} of ${n.searched_cells.toLocaleString()} grid cells (0.5°, ~15 km) meet everything, ` +
-    `about ${Math.round(n.meeting_area_km2).toLocaleString()} km² in ${n.regions} regions. ${terrainNote} Took ${s.seconds} s.</p>`;
+    `about ${Math.round(n.meeting_area_km2).toLocaleString()} km² in ${n.regions} regions` +
+    (s.ice ? `; ${n.ice_range_cells.toLocaleString()} of them (~${Math.round(n.ice_range_area_km2).toLocaleString()} km², light blue on the globe) are within ${c.max_ice_km} km of ice` : '') +
+    `. ${terrainNote} Took ${s.seconds} s.</p>`;
   if (!s.regions.length) {
     $('region-list').innerHTML = `<li class="dim">No region meets all the requirements. Try loosening the one that's hardest:
       outside the polar peaks, daylight above ~50% of a month isn't possible.</li>`;
@@ -520,45 +681,113 @@ function renderSearch() {
         <span class="${lvl(r.earth_pct, c.min_earth_pct)}">🌍 ${r.earth_pct}%</span>
         <span class="${lvl(r.avg_w_m2, c.min_avg_w_m2)}">⚡ ${r.avg_w_m2} W/m²</span>
         <span class="${r.slope_deg <= c.max_slope_deg ? 'good' : 'bad'}">⛰ ${r.slope_deg}°</span>
+        ${r.ice_km !== undefined ? `<span class="${r.within_ice_range ? 'ice-ok' : 'bad'}" title="Distance to the nearest ice candidate">🧊 ${r.ice_km} km${r.within_ice_range ? '' : ' (out of range)'}</span>` : ''}
         ${r.passes_with_terrain ? '' : '<span class="bad">fails with terrain</span>'}
       </div>
+      ${r.nearest_ice_crater ? `<div class="small muted">Nearest rated crater: <b>${esc(r.nearest_ice_crater.name)}</b>
+        (${r.nearest_ice_crater.rating === 'known' ? 'published ice evidence' : 'likely cold trap'}), ${r.nearest_ice_crater.distance_km} km</div>` : ''}
     </li>`).join('');
+}
+
+function regionTooltip(r) {
+  const ice = r.ice_km !== undefined ? ` · 🧊 ${r.ice_km} km to ice` : '';
+  return `<b>Search result ${esc(r.name)}</b> · ${r.area_km2.toLocaleString()} km²<br>` +
+    `☀️ ${r.sun_pct}% · 🌍 ${r.earth_pct}% · ⚡ ${r.avg_w_m2} W/m² · ⛰ ${r.slope_deg}°${ice}<br><span class="muted">Click to open</span>`;
 }
 
 function regionSiteExtra(i) {
   const r = state.search.regions[i];
-  return { name: `Search result #${i + 1}`, info: `Best spot of a ${r.area_km2.toLocaleString()} km² region from the site finder` };
+  const ice = r.nearest_ice_crater ? ` · ${r.nearest_ice_crater.distance_km} km from ${r.nearest_ice_crater.name}` : '';
+  return { name: `Search result #${i + 1}`, info: `Best spot of a ${r.area_km2.toLocaleString()} km² region from the site finder${ice}` };
 }
 
-// Heatmap: paint the search classes over the current globe texture.
+// Heatmap: three colours over the current globe texture.
+//   light blue = meets every requirement and is within the set range of ice (class 3)
+//   green      = meets every requirement, no ice within range (class 2)
+//   yellow     = marginal: within 85% of every threshold (class 1)
+// Each cell is drawn as a disc HEAT_DISC_KM in radius on the ground (an ellipse stretched by
+// 1/cos(lat) on the map), so areas come out round and smooth even at the poles, where 0.5°
+// cells are thin wedges, and a single suitable cell still shows. A white outline runs around
+// every suitable area (blue or green): the same discs drawn a little larger underneath.
+const HEAT = {
+  ice: 'rgb(120, 205, 255)',
+  suitable: 'rgb(50, 220, 110)',
+  marginal: 'rgb(255, 205, 0)',
+  outline: '#ffffff',
+};
+const HEAT_DISC_KM = 9;
+const HEAT_OUTLINE_KM = 3.5;
+
 async function applyHeatmap() {
-  const s = state.search;
+  const s = $('show-heatmap').checked ? state.search : null;
   const base = state.layers[state.layerKey]?.file ?? FALLBACK_TEXTURE;
-  if (!s || !$('show-heatmap').checked) { globe.globeImageUrl(base); return; }
+  if (!s) { globe.globeImageUrl(base); return; }
   const img = await loadImage(base);
-  const W = img.naturalWidth, H = img.naturalHeight;
+  const W = Math.max(img.naturalWidth, 4096), H = W / 2;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d');
-  g.drawImage(img, 0, 0);
-  const { nlat, nlon, classes_b64 } = s.grid;
-  const cls = Uint8Array.from(atob(classes_b64), (ch) => ch.charCodeAt(0));
+  g.drawImage(img, 0, 0, W, H);
+
+  const { nlat, nlon, res_deg: res, lat0, lon0 } = s.grid;
+  const cls = Uint8Array.from(atob(s.grid.classes_b64), (ch) => ch.charCodeAt(0));
+  const cellsOf = (test) => {
+    const out = [];
+    for (let i = 0; i < cls.length; i++) if (test(cls[i])) out.push([lat0 + Math.floor(i / nlon) * res, lon0 + (i % nlon) * res]);
+    return out;
+  };
+
+  // Outside the search area: darken (big uniform areas, so plain cells are fine here).
   const small = document.createElement('canvas'); small.width = nlon; small.height = nlat;
   const sg = small.getContext('2d');
   const data = sg.createImageData(nlon, nlat);
-  // green = meets all requirements, yellow = nearly, clear = no, dimmed = outside the search area
-  const colors = { 2: [60, 220, 120, 85], 1: [255, 196, 0, 125], 0: [0, 0, 0, 0], 255: [0, 0, 0, 110] };
-  for (let r = 0; r < nlat; r++) {
-    for (let col = 0; col < nlon; col++) {
-      const v = cls[r * nlon + col];
-      const k = ((nlat - 1 - r) * nlon + col) * 4;        // grid row 0 = south; image row 0 = north
-      const [R, G, B, A] = colors[v] ?? colors[0];
-      data.data[k] = R; data.data[k + 1] = G; data.data[k + 2] = B; data.data[k + 3] = A;
-    }
+  for (let i = 0; i < cls.length; i++) {
+    if (cls[i] !== 255) continue;
+    const r = Math.floor(i / nlon), col = i % nlon;
+    data.data[((nlat - 1 - r) * nlon + col) * 4 + 3] = 120;
   }
   sg.putImageData(data, 0, 0);
   g.imageSmoothingEnabled = true;
   g.drawImage(small, 0, 0, W, H);
-  globe.globeImageUrl(c.toDataURL('image/jpeg', 0.88));
+
+  // Marginal (yellow), then the suitable layer (outline, green, blue) on top.
+  const layer = () => { const l = document.createElement('canvas'); l.width = W; l.height = H; return l; };
+  const marginal = layer();
+  drawDiscs(marginal.getContext('2d'), cellsOf((v) => v === 1), HEAT_DISC_KM, HEAT.marginal, W, H);
+  g.globalAlpha = 0.5; g.drawImage(marginal, 0, 0);
+  const suit = layer(), sc = suit.getContext('2d');
+  drawDiscs(sc, cellsOf((v) => v === 2 || v === 3), HEAT_DISC_KM + HEAT_OUTLINE_KM, HEAT.outline, W, H);
+  drawDiscs(sc, cellsOf((v) => v === 2), HEAT_DISC_KM, HEAT.suitable, W, H);
+  drawDiscs(sc, cellsOf((v) => v === 3), HEAT_DISC_KM, HEAT.ice, W, H);
+  g.globalAlpha = 0.72; g.drawImage(suit, 0, 0);
+  g.globalAlpha = 1;
+  globe.globeImageUrl(c.toDataURL('image/jpeg', 0.9));
+}
+
+// Fill a disc of radius_km around each [lat, lon] on an equirectangular canvas. On the map a
+// disc is an ellipse widened by 1/cos(lat); copies are drawn across the ±180° seam, and a disc
+// that reaches a pole fills the whole cap beyond it.
+function drawDiscs(g, cells, radiusKm, color, W, H) {
+  const kmPerDeg = (1737.4 * Math.PI) / 180;
+  const pxPerDegY = H / 180, pxPerDegX = W / 360;
+  g.fillStyle = color;
+  g.beginPath();
+  for (const [lat, lon] of cells) {
+    const rDeg = radiusKm / kmPerDeg;
+    const x = (lon + 180) * pxPerDegX, y = (90 - lat) * pxPerDegY;
+    const ry = rDeg * pxPerDegY;
+    const cos = Math.cos((lat * Math.PI) / 180);
+    const rx = Math.min((rDeg / Math.max(cos, 1e-3)) * pxPerDegX, W / 2);
+    for (const dx of [0, -W, W]) {
+      if (x + dx + rx < 0 || x + dx - rx > W) continue;
+      g.moveTo(x + dx + rx, y);
+      g.ellipse(x + dx, y, rx, ry, 0, 0, 2 * Math.PI);
+    }
+    if (90 - Math.abs(lat) < rDeg) {                          // the disc covers the pole
+      const yPole = lat < 0 ? H : 0;
+      g.rect(0, Math.min(y, yPole), W, Math.abs(yPole - y));
+    }
+  }
+  g.fill('nonzero');
 }
 
 function loadImage(src) {
@@ -609,11 +838,6 @@ async function onOpen3d(initialT = 0) {
     landed,
     level: site.terrainLevel ?? 'global',
     initialT,
-    // The 3D view's own "Get detailed terrain" button: fetch, re-evaluate, reopen at the same moment.
-    onRequestDetail: async (t) => {
-      await getDetailedTerrain(site);
-      if (state.current === site && site.terrainLevel === 'detailed') onOpen3d(t);
-    },
   });
 }
 
@@ -966,9 +1190,18 @@ document.querySelectorAll('.collapse-btn').forEach((b) => b.addEventListener('cl
 
 // Landing page and search results
 $('req-form').addEventListener('submit', onFind);
-$('skip-landing').addEventListener('click', () => { showLanding(false); showTab(state.search ? 'search' : 'sites'); });
+$('skip-landing').addEventListener('click', chooseExplore);
+$('choice-explore').addEventListener('click', chooseExplore);
+$('req-goal').addEventListener('change', syncGoalFields);
+$('choice-plan').addEventListener('click', choosePlan);
+// Before the app is revealed "Back" returns to the start screen; afterwards it just closes the form.
+$('back-to-choice').addEventListener('click', () => {
+  if (state.revealed) showLanding(false);
+  else { $('landing').hidden = true; showChoice(true); }
+});
 $('edit-req').addEventListener('click', () => showLanding(true));
-$('show-heatmap').addEventListener('change', applyHeatmap);
+$('show-heatmap').addEventListener('change', () => { applyHeatmap(); refreshLabels(); });
+$('show-ice').addEventListener('change', onShowIce);
 $('region-list').addEventListener('click', async (e) => {
   const addIdx = e.target.dataset?.addRegion;
   if (addIdx !== undefined) {
@@ -1003,8 +1236,11 @@ $('region-list').addEventListener('click', async (e) => {
       $('req-sun').value = last.min_sun_pct; $('req-earth').value = last.min_earth_pct;
       $('req-power').value = last.min_avg_w_m2; $('req-slope').value = last.max_slope_deg;
       $('req-region').value = last.region;
+      if (last.max_ice_km) $('req-ice-km').value = last.max_ice_km;
+      if ('goal' in last) $('req-goal').value = last.goal ?? '';
     }
   } catch { /* ignore bad saved data */ }
+  syncGoalFields();
   if (recall('panel-collapsed') === '1') setPanelCollapsed(true);
   for (const id of ['layers', 'legend']) if (recall(`collapsed-${id}`) === '1') setBoxCollapsed(id, true);
   syncPeriodInputs();

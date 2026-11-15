@@ -67,6 +67,9 @@ class FindRequest(BaseModel):
     min_avg_w_m2: float = Field(0, ge=0, le=1361)    # mean sunlight on a flat panel over the period
     max_slope_deg: float = Field(15, ge=0, le=90)
     region: Literal["all", "south", "north", "nearside", "farside"] = "all"
+    # Mission goal (api/finder.GOALS). "ice_craters" adds the ice map and a distance limit.
+    goal: Literal["ice_craters"] | None = None
+    max_ice_km: float = Field(50, ge=1, le=1000)    # landing site to the nearest ice candidate
 
     @model_validator(mode="after")
     def check_dates(self):

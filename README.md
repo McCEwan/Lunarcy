@@ -34,7 +34,7 @@ The Moon Trek textures are already in `web/assets/moontrek/`. Rebuild them with 
 |---|---|
 | API contract, validation, error codes | Done (matches the design doc) |
 | Sun/Earth positions (`api/ephemeris.py`) | **Real:** JPL Horizons, cached, with the site's LOLA elevation as its altitude. Falls back to a labelled approximation offline. |
-| Elevation and slope (`api/lola.py`) | **Real:** NASA LOLA. Global estimate from LDEM_128 (~237 m) everywhere; detailed ~30 m on demand ("Get detailed terrain"). |
+| Elevation and slope (`api/lola.py`) | **Real:** NASA LOLA. Global estimate from LDEM_128 (~237 m) everywhere; detailed ~30 m on demand (Site tab, "Get detailed terrain"). |
 | Terrain blocking the Sun/Earth | **Real:** skyline from LOLA applies to sunlight %, power, comms, windows and rise/set times (flat-horizon values shown alongside). |
 | Globe day/night + Sun/Earth markers | **Real** directions from Horizons sub-solar/sub-Earth points (markers not to scale). |
 | Temperature | **Real:** NASA LRO Diviner night low / day high per 0.5° cell (`scripts/fetch_diviner.py`). Falls back to a labelled placeholder if not downloaded. |
@@ -43,6 +43,7 @@ The Moon Trek textures are already in `web/assets/moontrek/`. Rebuild them with 
 | Lander specs (`api/data/landers.json`) | Partly real. Unpublished values are listed in `estimated_fields`. |
 | Frontend (`web/`) | Working: globe, layers, site catalog, links, colour-coded stats with legend, lander, windows with suggested landing hour, checks, compared-sites panel on the left. Charts still TODO. |
 | Site finder (landing page, `POST /find`) | Working: whole-Moon search in ~10 s from mission requirements, with a globe heatmap and ranked regions. Terrain-aware everywhere once `build_skylines.py` has run. |
+| Ice in deep craters (mission goal, `api/ice.py`) | **Real:** permanent shadow from LOLA skylines, cold traps (≤110 K) from Diviner, 205 named polar craters from the USGS Gazetteer rated for ice; published evidence (LCROSS, LOLA, LAMP) cited. Misses sub-km cold traps. |
 | 3D site view + timelapse (`web/site3d.js`) | Working, on **real** LOLA terrain (global or detailed) with Sun/Earth from Horizons. Moon and Earth surfaces are generic textures by design. |
 
 ## Splitting the work

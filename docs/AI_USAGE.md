@@ -196,6 +196,67 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the opening animation was only checked at desktop size; on phones the panel covers the lower half of the screen.
 
+### 2026-11-15 · Session 10: macOS local setup and Horizons SSL fix
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app
+- **Prompted with:** "can you help me get the local host running with the code as is now", then "Yes, fix it" for the Horizons certificate error.
+- **What the AI did:** created `.venv` and installed requirements on macOS; changed `.claude/launch.json` from the Windows interpreter path to `.venv/bin/python`. Found that every Horizons call failed with `CERTIFICATE_VERIFY_FAILED` because the python.org macOS Python has no root certificates, so the app was quietly using the APPROXIMATE analytic ephemeris. Added `certifi` to `requirements.txt` and a global HTTPS opener using certifi's CA bundle in `api/__init__.py`. It also covers `api/lola.py` and the fetch scripts that import `api`.
+- **Checks the AI ran on its own output:** inspected the server's certificate chain with openssl (genuine Entrust/Sectigo chain, no proxy). After the restart, `/sky/subpoints` reports the Horizons source and the server logs no fallback warning. `python -m pytest`: 78 passed, 4 skipped.
+- **What a human checked:** _[fill in]_
+- **Follow-up (same session):** downloaded LOLA LDEM_128 (2,123 MB) with `scripts/fetch_lola.py` to `~/LunarPlannerData/lola/`. After a restart `/health` reports the LDEM_128 source, the Apollo 11 skyline comes from real terrain, and pytest gives 79 passed, 3 skipped (one LOLA test no longer skips).
+- **Second follow-up:** built the Diviner temperature grids with `scripts/fetch_diviner.py` (2.7 min, 100% of cells have data, 1.6 MB file). `/health` now reports `temperature_loaded: true`. Apollo 11 reads 95 K / 395 K, matching the earlier session; the Shackleton rim reads 80 K / 252 K.
+- **Third follow-up:** built the finder skylines with `scripts/build_skylines.py` (2.0 min, 48 MB, 259,200 cells). A south-pole `/find` query for December 2026 (≥60% Sun, ≥50% Earth) now reports `precomputed_skylines: true` in 6.9 s and returns 3 regions. The top one, near 85.25°S 36.75°E, still passes after its terrain re-check (79.6% Sun, 66.4% Earth).
+- **Still unverified / known limits:** the finder regions were not compared against published polar illumination studies. `scripts/fetch_moontrek_layers.py` does not import `api`, so it does not get the fix (its images are already in the repo).
+
+### 2026-11-15 · Session 11: "Check for ice in deep craters" goal; 3D view cleanup
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** remove "Get detailed terrain" from the 3D view; the south pole goal is to check deep craters for ice, so build a list of ice deposits if possible, otherwise map craters deep enough to hold ice, add them to the heatmap, and add a mission-goal selector whose only option is "Check for ice in deep craters".
+- **What the AI did:**
+  - Removed the 3D view's "Get detailed terrain" chip (`web/site3d.js`, `web/index.html`, `web/app.js`). The Site tab's button stays. The AI told the user that the button fetches ~30 m LOLA data, about 8× finer than the 237 m global grid, which is the opposite of what the request assumed.
+  - `scripts/fetch_polar_craters.py` → `api/data/polar_craters.json`: 205 IAU-named craters poleward of 75° (≥8 km) from the USGS Gazetteer. Published ice evidence, each with a citation: Cabeus (LCROSS, Colaprete 2010), Shackleton (Zuber 2012), Haworth/Faustini/Shoemaker (LAMP, Hayne 2015).
+  - `api/ice.py`: permanent shadow from LOLA skylines against the Sun's highest possible path (±1.54° declination), Diviner cold traps (≤110 K, Paige 2010), and per-crater depth, floor shadow and coldest cell. Craters are rated known / likely / possible / unlikely.
+  - `GET /ice`; `/find` accepts `goal: "ice_craters"` and `max_ice_km`. Cells must lie within that distance of an ice target, and each region reports `ice_km` and its nearest rated crater.
+  - Frontend: a Mission goal select (one option) and a distance field; the search area now defaults to the south pole. Ice candidates are drawn in blue on the heatmap, known and likely craters are labelled on the globe with tooltips, and clicking a label opens the crater floor. The results show the ice distance.
+  - Updated `docs/ARCHITECTURE.md`, `CLAUDE.md` and `README.md`.
+- **Checks the AI ran on its own output:**
+  - Crater temperatures match the literature: Haworth 51 K, Shoemaker 65 K, Faustini 72 K, Hermite 86 K, Shackleton 91 K, Cabeus 108 K. All have permanently shadowed floors.
+  - New tests in `tests/test_ice.py` (Sun geometry at the pole and at 70°S, flat pole lit vs deep polar bowl shadowed, ratings, distances, finder filter, the crater file's sources). The suite gives 86 passed, 3 skipped.
+  - In the browser, a south-pole search for December 2026 (≥50 % Sun, ≥50 % Earth, ≥50 W/m², ≤10°, ≤50 km to ice) found 18 regions in 7.6 s. 17 crater labels showed, the 3D view opened without the button, and the console showed no errors.
+  - Found and fixed a bug where the distance field's `step="5"` with `min="1"` made the default of 50 invalid, which silently blocked the form.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:**
+  - The ice map was not checked visually on screen (the browser pane was hidden), only through page state.
+  - 0.5° cells and the 237 m grid miss sub-km cold traps. "Possible" craters are often warm cells with a small shadowed foot of wall.
+  - Evidence summaries come from the cited papers' abstracts and secondary sources, not a full reading.
+  - Not compared with published PSR maps (e.g. Mazarico et al. 2011).
+
+### 2026-11-15 · Session 12: start screen, skip-ice option, clearer heatmap, zoom-scaled pins
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** an option to skip the ice check; clearer heatmaps with outlines around the most suitable areas; a smaller click pin that scales with zoom, applied to the existing pins too; a screen before the landing page with two simple buttons (explore, or enter mission requirements).
+- **What the AI did:** added the start screen (`#choice`: "Explore the Moon" / "Plan a mission"), with "← Back" on the requirements form. Added the goal option "No specific goal (skip the ice check)", which hides and disables the ice distance field. Rewrote `applyHeatmap()`: crisp cells with stronger colours, outlines (bright on a dark halo) around areas that meet everything and around likely ice cells, rank labels #1–#10 for the top regions with tooltips and click-to-open. Pins and labels now scale with camera altitude (the user pin starts at 0.45° instead of 0.8°).
+- **Checks the AI ran on its own output:** in the browser, checked through page state: the intro leads to the start screen; Plan, Back and Explore go where they should; with no goal the form is valid and the ice field is hidden. An ice search showed rank labels #1–#10 and 17 crater labels. Zooming to altitude 0.2 shrank the pin from 0.42° to 0.04° across, including during fly-to animations. The console showed no errors. A screenshot showed the first outline version drawing white wedges near the pole (north–south edges widened by 1/cos(lat) grew wider than the cells), so the AI capped them at 40 % of a cell; the wedges were gone in the next screenshot.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the browser pane was hidden, so the screenshots were low-resolution and the heatmap's readability wasn't judged closely. Outlines are drawn into the 4096 px globe texture, so they go soft when zoomed far in.
+
+### 2026-11-15 · Session 13: visible pin, three-colour smooth heatmap, grand type, shadow-reveal intro
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** the user pin was too small and needed a colour that contrasts with the grey surface; the heatmap was blocky at the pole and should be three colours (yellow marginal, green suitable without ice in range, light blue suitable with ice in range); a font with a sense of grandeur on the intro and landing pages; an intro where the Moon's shadow reveals it.
+- **What the AI did:**
+  - Pin: hot magenta (`#ff2bd6`), 2.5× the radius, taller, with a pulsing ring (globe.gl rings). Still scales with zoom.
+  - Finder (`api/finder.py`): class 3 = suitable and within `max_ice_km` of ice, class 2 = suitable (previously cells beyond the ice range were dropped). Regions are grouped per class, ice-range regions first; added `within_ice_range`, `ice_range_cells` and `ice_range_area_km2`. Test updated.
+  - Heatmap: every cell is drawn as a 9 km disc on the ground (an ellipse widened by 1/cos(lat), wrapped across the seam, with polar caps filled). This gives smooth round areas with white outlines. The legend was rewritten. A first version that smoothed (averaged) the grid was replaced because it erased isolated single suitable cells, which are many of the best spots.
+  - Type: Cinzel for the titles, Cormorant Garamond for the subtitles (Google Fonts). Intro: the light starts behind the Moon and swings round to the viewer over 5.6 s, following the rotating camera, with the title retimed to fade in as the light arrives. The body now starts in intro mode so the menus don't flash before the script loads.
+- **Checks the AI ran on its own output:** pytest gives 86 passed, 3 skipped. In the browser, an ice search for December 2026 found 967 suitable cells, 24 of them within 50 km of ice; result #1 is in range. Screenshots showed smooth blue, green and yellow areas with outlines near 81.5°S and no polar wedges, and the heatmap renders in 0.17 s (0.74 s for the averaging version). Intro screenshots at 1 s, 3.5 s and 7.5 s showed the Moon going from dark to lit with the Cinzel title. The magenta pin is visible from the whole-Moon view. The console showed no errors. The AI also found that the running server needed a restart to pick up the finder change.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the browser pane was hidden, so the screenshots were low-resolution. Discs make small areas look like round 18 km blobs, a display choice that is coarser than the data near the pole. The reveal lighting's direction is chosen for looks, not the real Sun (the real Sun takes over once the app opens). Fonts need internet; without it they fall back to Georgia.
+
 ---
 
 ## Entry template
