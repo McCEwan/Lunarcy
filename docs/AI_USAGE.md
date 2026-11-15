@@ -186,6 +186,16 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
   - The values are multi-year averages per local time, not a specific date.
   - The lander temperature limits in `landers.json` are still estimates.
 
+### 2026-11-15 · Session 9: opening sequence and visual polish (branch `feature/intro-ui`)
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** an intro with the title fading in and "Press Enter to continue"; a zoomed-in Moon behind the landing page, then a zoom-out with the menus fading in; a baseline night light in the 3D view; more translucent menus; a more saturated yellow in the heatmap. The user corrected the title to "Lunarcy" mid-task; the AI had used the spelling "Lunacy" from the request.
+- **What the AI did:** added the intro overlay (CSS fade/blur animation, Enter or click to continue), an auto-rotating close-up camera behind the landing page, and a 1.6 s zoom-out with a 1 s menu fade (`revealApp()` in `web/app.js`). Labels and Sun/Earth markers stay hidden until then. Made the globe full-screen behind translucent, blurred panels. Saturated the yellow heatmap colour. Added a baseline night light in `web/site3d.js`.
+- **Checks the AI ran on its own output:** in the browser at desktop size: the intro, Enter, the landing page over the close-up, the search, the zoom-out and the menu fade all work. It tuned the close-up framing after the first attempts filled the screen or showed the whole Moon. 3D night brightness at Chang'e 4 went from 2 to 24 (daylight is 67), so the surface is visible but still dark. It fixed the Earth marker drawing over the panel.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the opening animation was only checked at desktop size; on phones the panel covers the lower half of the screen.
+
 ---
 
 ## Entry template

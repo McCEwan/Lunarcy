@@ -178,10 +178,10 @@ function applyGlobeSky() {
     // crater detail readable; the direct Sun still makes day and night clearly different.
     sunLight.intensity = 2.3;
     ambientLight.intensity = 1.8;
-    globe.htmlElementsData([
+    globe.htmlElementsData(state.revealed ? [
       { kind: 'sun', lat: sub.sub_solar.lat, lng: sub.sub_solar.lon, alt: 1.1 },
       { kind: 'earth', lat: sub.sub_earth.lat, lng: sub.sub_earth.lon, alt: 0.7 },
-    ]);
+    ] : []);
     const when = sub.time.replace('T', ' ').replace('Z', '');
     const src = /Horizons/.test(sub.source) && !/APPROXIMATE/.test(sub.source) ? 'JPL Horizons' : 'approximate model';
     $('sky-caption').textContent = `Lit for ${when} UTC (${src}). Markers show direction only, not distance or size.`;
@@ -208,7 +208,9 @@ function refreshPoints() {
 }
 
 function refreshLabels() {
-  globe.labelsData($('show-sites').checked ? state.catalog : []);
+  // Hidden during the opening sequence so only the Moon and the title show.
+  const show = $('show-sites').checked && state.revealed;
+  globe.labelsData(show ? state.catalog : []);
 }
 
 // ---- Map layers (NASA Moon Trek) ---------------------------------------------
@@ -397,6 +399,41 @@ function setBoxCollapsed(id, collapsed) {
 function showLanding(show = true) {
   $('landing').hidden = !show;
   if (show) $('req-sun').focus();
+  else if (!state.revealed) revealApp();
+}
+
+// ---- Opening sequence -------------------------------------------------------------------
+// 1. Intro: close-up of the Moon slowly turning, "Lunarcy" fades in, "Press Enter to continue".
+// 2. Landing page over the close-up (about a quarter of the Moon in view).
+// 3. After the requirements (or "Skip"): zoom out to the whole Moon; the menus fade in.
+
+const CLOSE_VIEW = { lat: -18, lng: 25, altitude: 0.6 };    // roughly a quarter of the Moon
+const FULL_VIEW_ALTITUDE = 2.4;
+
+function startIntro() {
+  document.body.classList.add('intro-mode');
+  globe.pointOfView(CLOSE_VIEW, 0);
+  globe.controls().autoRotate = true;
+  globe.controls().autoRotateSpeed = 0.25;
+  $('intro').hidden = false;
+  $('intro').focus();
+}
+
+function leaveIntro() {
+  const intro = $('intro');
+  if (intro.hidden || intro.classList.contains('leaving')) return;
+  intro.classList.add('leaving');
+  setTimeout(() => { intro.hidden = true; showLanding(true); }, 650);
+}
+
+function revealApp() {
+  state.revealed = true;
+  globe.controls().autoRotate = false;
+  const pov = globe.pointOfView();
+  globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: FULL_VIEW_ALTITUDE }, 1600);
+  document.body.classList.remove('intro-mode');   // menus fade in (CSS, 1 s)
+  setTimeout(refreshLabels, 600);
+  setTimeout(applyGlobeSky, 0);
 }
 
 async function onFind(e) {
@@ -509,7 +546,7 @@ async function applyHeatmap() {
   const sg = small.getContext('2d');
   const data = sg.createImageData(nlon, nlat);
   // green = meets all requirements, yellow = nearly, clear = no, dimmed = outside the search area
-  const colors = { 2: [76, 209, 138, 80], 1: [255, 204, 77, 70], 0: [0, 0, 0, 0], 255: [0, 0, 0, 110] };
+  const colors = { 2: [60, 220, 120, 85], 1: [255, 196, 0, 125], 0: [0, 0, 0, 0], 255: [0, 0, 0, 110] };
   for (let r = 0; r < nlat; r++) {
     for (let col = 0; col < nlon; col++) {
       const v = cls[r * nlon + col];
@@ -973,8 +1010,13 @@ $('region-list').addEventListener('click', async (e) => {
   syncPeriodInputs();
   showTab('search');
   renderSearch();
-  showLanding(true);
+  startIntro();
 })();
+
+$('intro').addEventListener('click', leaveIntro);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !$('intro').hidden) { e.preventDefault(); leaveIntro(); }
+});
 
 loadLayers();
 loadLanders().then(() => { refreshPoints(); return loadCatalog(); });

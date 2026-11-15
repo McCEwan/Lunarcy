@@ -391,7 +391,12 @@ class SiteView {
     this.earthMat.uniforms.sunDir.value.copy(sunDir);
     this.earth.visible = s.earthEl > -2;
     const earthLit = (1 - sunDir.dot(earthDir)) / 2;
-    this.ambient.intensity = 0.02 + (s.earthEl > 0 ? 0.12 * earthLit : 0);
+    // Baseline light so the surface stays readable at night: a cool, dim fill (plus
+    // earthshine when Earth is up and lit). Daytime keeps a small fill so the
+    // Sun's shadows still dominate.
+    const night = s.sunEl <= 0 || this.sunLight.intensity === 0;
+    this.ambient.intensity = (night ? 0.55 : 0.12) + (s.earthEl > 0 ? 0.25 * earthLit : 0);
+    this.ambient.color.set(night ? 0x8fa8d8 : 0xbfd4ff);
 
     this.renderHud(s, earthLit);
   }

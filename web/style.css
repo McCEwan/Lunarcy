@@ -330,3 +330,50 @@ body.panel-collapsed #globe { right: 0; }
   body.panel-collapsed #globe { bottom: 0; }
   .btn-row { grid-template-columns: 1fr; }
 }
+
+/* ===== Intro screen ===== */
+#intro {
+  position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 18px; cursor: pointer; outline: none;
+  background: radial-gradient(ellipse at center, rgba(5, 7, 13, 0) 30%, rgba(5, 7, 13, .65) 100%);
+  transition: opacity .7s ease;
+}
+#intro.leaving { opacity: 0; pointer-events: none; }
+#intro[hidden] { display: none; }
+.intro-title {
+  margin: 0; font-size: clamp(56px, 12vw, 140px); font-weight: 200; letter-spacing: .32em;
+  padding-left: .32em;                      /* balance the letter-spacing on the right */
+  color: #f2f4fa; text-shadow: 0 0 40px rgba(180, 200, 255, .35);
+  opacity: 0; filter: blur(12px); animation: intro-title 3.2s ease-out .4s forwards;
+}
+.intro-sub {
+  margin: 0; font-size: 15px; letter-spacing: .25em; text-transform: uppercase; color: #dfe5f2;
+  text-shadow: 0 0 12px rgba(0, 0, 0, .9);
+  opacity: 0; animation: intro-sub 1.2s ease 3.2s forwards, intro-pulse 2.4s ease-in-out 4.4s infinite;
+}
+@keyframes intro-title { to { opacity: 1; filter: blur(0); } }
+@keyframes intro-sub { to { opacity: 1; } }
+@keyframes intro-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* ===== Before the requirements are entered: only the Moon (and the forms) show ===== */
+#left-col, #legend, #panel { transition: opacity 1s ease, transform .2s ease; }
+body.intro-mode #left-col, body.intro-mode #legend, body.intro-mode #panel {
+  opacity: 0; pointer-events: none;
+}
+#landing {
+  background: radial-gradient(ellipse at center, rgba(5, 7, 13, .15) 20%, rgba(5, 7, 13, .7) 100%);
+  animation: landing-in .6s ease;
+}
+@keyframes landing-in { from { opacity: 0; } to { opacity: 1; } }
+.landing-card { background: rgba(15, 20, 32, .74); backdrop-filter: blur(10px); }
+
+/* ===== More translucent menus (the Moon shows through) ===== */
+#globe { inset: 0 !important; }            /* full screen, behind the panel too */
+#panel { background: rgba(15, 20, 32, .6); backdrop-filter: blur(8px); border-left-color: rgba(38, 48, 73, .6); }
+#panel-toggle { background: rgba(15, 20, 32, .6); backdrop-filter: blur(8px); }
+.overlay { background: rgba(15, 20, 32, .5); backdrop-filter: blur(6px); border-color: rgba(38, 48, 73, .6); }
+.tile, .sky-now, .region-list li, select, input, .site-list li:hover { background: rgba(22, 29, 45, .55); }
+.compare-table.vertical thead th { background: rgba(15, 20, 32, .6); }
+#v3d-hud { background: rgba(15, 20, 32, .6); backdrop-filter: blur(6px); }
+#panel { z-index: 5; }                      /* above the globe's Sun/Earth marker layer */
+#left-col, #legend { z-index: 4; }
