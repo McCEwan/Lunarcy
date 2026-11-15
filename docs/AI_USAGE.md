@@ -326,6 +326,48 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the shape was checked by measurement, not seen at full resolution (the browser pane was hidden).
 
+### 2026-11-15 · Session 20: closing the gaps against the challenge statement
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** "Does this project meet this challenge statement…? If not recommend some changes", then "lets implement these changes in the way/order you think is best". The AI's assessment found three gaps: no timeline charts, no 2D Sun/Earth-vs-horizon view, and weak same-site date comparison (made worse when the lander and landing-window UI was removed in Session 18).
+- **What the AI did (in this order):**
+  - Backend `api/scenarios.py`: `GET /site/dates` (every hour a candidate touchdown, scored on the next N days by cumulative sums; daily best hour and a top 5 at least 2 days apart) and `GET /site/nearby` (9×9 points within ±3 km, each with its own LOLA skyline). `compute_skylines` gained `r0_m` so it can match `horizon_profile` exactly. `tests/test_scenarios.py` added (4 tests).
+  - `web/skycharts.js`: a Sky & horizon panel with a 360° horizon panorama (LOLA skyline, Sun/Earth paths, live markers), an elevation chart with the terrain horizon dashed, Sun/Earth/both in-view bars, a power curve, a shared time cursor, a readout with time to the next sunset/Earthset or rise, an Enlarge overlay and a timeline CSV.
+  - A Sun elevation tile (max, and average while in view; the tooltip explains flat vs vertical panels at the poles).
+  - Comparison columns became site + dates scenarios, plus −1 mo/−1 d/+1 d/+1 mo steps, "Use current dates for all" and Export CSV. Best landing dates UI (day strip and picks; clicking one loads the dates). Nearby alternatives UI (two heat grids; click to open a spot).
+  - Learn tab (6 cards) linked from the start screen; share links (`#lat=&lon=&from=&to=`) that open a site directly; README, ARCHITECTURE and CLAUDE.md updated.
+- **Checks the AI ran on its own output:**
+  - Found that the first nearby grid disagreed with the site's own tiles (100 % vs 82 % sunlight at the Shackleton rim). The cause: a coarser skyline whose samples started 60 m out instead of 30 m, which matters with the Sun ~2° up. The grid now uses the `/evaluate` skyline method; the centre then matched (20.4 % vs 20.3 %, 41.4 % vs 41.4 % in a scripted check).
+  - Fixed a wrong expected value in its own new test (6 sunny days, not 5).
+  - pytest gives 95 passed, 3 skipped.
+  - In the browser: the panel draws all four views; best dates for the Shackleton rim (14-day mission, from 1 Dec 2026) put 12 Dec 11:00 UTC first (Sun 97 %, Earth 80 %); the same site compared for 1–29 Dec vs a month later shows 82 % → 66 % sunlight; the share link reopened the same site and dates; the enlarged panel was seen at full resolution (skyline, Sun path, Earth's libration loop); at 375 px wide there is no horizontal overflow. No console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** the best-dates score (mean of Sun % and Earth %, minus 5 for a dark touchdown) is a design choice. Date search and nearby use the ~237 m global terrain. Learn-card facts (1.5° tilt, ~7° libration, −163 °C ice stability, LCROSS) are standard values, not re-cited in the app. CSV downloads were not clicked in the test browser.
+
+### 2026-11-15 · Session 21: hover beacon, "why recommended" on the Site tab, full-size charts window
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** highlight a site's marker on hover and extend it into space so it can be seen from the other side of the Moon; is there more information behind the stat tiles' "i"? (the user remembered a "why it chose this" explanation); a pop-up window with the charts laid out full size instead of in sidebar order.
+- **What the AI did:**
+  - Hover beacon: from the globe (labels, pins), the Sites list, search results and comparison headers. A white beam 1.1 Moon radii tall rises from the site (a points-layer cylinder), with a name tag at its top and the label enlarged and turned white.
+  - Answered the "i" question: the tiles hide nothing extra (the whole tile is the tooltip). The remembered "why" was only on search results' "i", so sites opened from a search now show a "Why this site was recommended" box on the Site tab.
+  - The charts window (now "Full view", also opened by clicking the panorama) is a dashboard grid: panorama with the readout and a legend beside it, then elevation next to power and in-view windows. Each chart sizes to its own box (the cursor now tracks each chart's own width).
+- **Checks the AI ran on its own output:** in the browser, the full-view grid rendered at full resolution; it showed Earth's below-horizon loop spilling out of the panorama into the next chart, which was fixed by clipping. Hovering Apollo 11 in the Sites list added a beam at altitude 1.1, its tag and a white label. Seen from 98° away, the beam stuck out past the limb. From almost exactly behind (177°) it was hidden: that is geometry (a radial beam only clears the limb more than ~28° off the anti-view axis), so the tag now always shows and says "behind the Moon". The search result #1 Site tab showed the why box with every margin, the ice distance, the ranking and the terrain check. No console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** beacons for sites almost directly behind the Moon show only the tag, not the beam.
+
+### 2026-11-15 · Session 22: clearer pop-out, "Why this site?" links, search row layout
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), desktop app, including its built-in browser
+- **Prompted with:** a clearer icon and wording to pop the charts out; make the search results' "why" a clear link that opens the explanation; fix the km² overlapping the UI when it reaches 3+ digits.
+- **What the AI did:** the sky panel has a white "Expand charts" pill (pop-out arrow icon) in its header (a second dashed "Pop out" bar under the charts was added, then removed at the user's request, so only the pill remains). Each search result has an underlined "Why this site?" link that expands the reasoning in place, as a lead sentence plus bullets ("Hide explanation" collapses it); clicking it doesn't open the site. The result header is now a flex row (title wraps, "+ Compare" beside it) instead of an absolutely positioned button on top of the text.
+- **Checks the AI ran on its own output:** a broad ice search (25 results, areas up to 2,033 km²) gave zero title/button overlaps (measured from bounding boxes); the why link toggled and stayed on the Search tab; screenshots of the result list and the sky panel looked as intended. No console errors.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** none new.
+
 ---
 
 ## Entry template

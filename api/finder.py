@@ -125,11 +125,12 @@ def slope_grid(heights, res: float = RES_DEG) -> np.ndarray:
 
 
 def compute_skylines(heights, lats, lons, az_step: float = SKY_AZ_STEP, samples: int = 120,
-                     radius_m: float = 150_000.0, observer_m: float = 2.0) -> np.ndarray:
-    """Terrain horizon elevation (deg) for many sites at once: shape (N, 360/az_step)."""
+                     radius_m: float = 150_000.0, observer_m: float = 2.0, r0_m: float = 60.0) -> np.ndarray:
+    """Terrain horizon elevation (deg) for many sites at once: shape (N, 360/az_step).
+    With az_step=1, samples=300, r0_m=30 it matches api/patch.horizon_profile (the /evaluate skyline)."""
     lats, lons = np.atleast_1d(lats), np.atleast_1d(lons)
     az = np.arange(0.0, 360.0, az_step)
-    r = np.geomspace(60.0, radius_m, samples)
+    r = np.geomspace(r0_m, radius_m, samples)
     drop = r ** 2 / (2 * MOON_R_M)
     out = np.empty((len(lats), len(az)), dtype=np.float32)
     batch = max(1, 400_000 // (len(az) * samples))

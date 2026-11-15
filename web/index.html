@@ -39,11 +39,12 @@
           <b>Explore the Moon</b>
           <span>Spin the globe, click anywhere, and browse past and planned landing sites.</span>
         </button>
-        <button type="button" id="choice-plan" class="choice-card">
+        <button type="button" id="choice-plan" class="choice-card" style="order:2">
           <b>Plan a mission</b>
           <span>Enter your mission requirements and we'll find the best landing regions.</span>
         </button>
       </div>
+      <button type="button" id="choice-learn" class="linklike">New to the Moon? Learn why its poles are so hard to plan for →</button>
     </div>
   </div>
 
@@ -152,6 +153,12 @@
           <input id="period-start" type="date" min="2025-01-01" max="2050-12-31" title="Start (UTC)">
           <span id="period-end-wrap" hidden>→ <input id="period-end" type="date" min="2025-01-01" max="2050-12-31" title="End (UTC)"></span>
         </span>
+        <span class="period-step" id="period-step" data-tip="Step the dates to see how a schedule slip changes the site. A lunar month (about 29.5 days) brings the Sun back to roughly the same place in the sky.">
+          <button type="button" class="chip" data-shift="-30">−1 mo</button>
+          <button type="button" class="chip" data-shift="-1">−1 d</button>
+          <button type="button" class="chip" data-shift="1">+1 d</button>
+          <button type="button" class="chip" data-shift="30">+1 mo</button>
+        </span>
       </div>
     </header>
 
@@ -160,6 +167,7 @@
       <button class="tab" data-tab="site">Site</button>
       <button class="tab" data-tab="compare">Compare <span id="compare-count" class="count"></span></button>
       <button class="tab" data-tab="sites">Sites</button>
+      <button class="tab" data-tab="learn">Learn</button>
     </nav>
 
     <!-- Search results -->
@@ -176,6 +184,7 @@
       <section id="site-section" hidden>
         <h2 id="site-title"></h2>
         <div id="site-meta" class="small"></div>
+        <details id="site-why" class="insight why-box" open hidden></details>
         <div id="site-terrain" class="small site-terrain"></div>
         <div id="sky-now" class="sky-now"></div>
         <div id="site-period" class="small muted"></div>
@@ -184,6 +193,26 @@
           <button id="view3d-btn" disabled>Open 3D view</button>
           <button id="compare-btn" class="secondary" disabled>Add to comparison</button>
         </div>
+        <div id="sky-panel" class="sky-panel"></div>
+        <details id="dates-box" class="insight">
+          <summary>Best landing dates <span class="muted">· what if the schedule slips?</span></summary>
+          <div class="row3">
+            <label>Mission (days)<input id="dates-mission" type="number" min="1" max="60" step="1" value="14"></label>
+            <label>Search ahead (days)<input id="dates-days" type="number" min="7" max="366" step="1" value="60"></label>
+            <label>Priority<select id="dates-priority">
+              <option value="both">Sun + Earth</option>
+              <option value="sun">Sunlight (power)</option>
+              <option value="comms">Earth (comms)</option>
+            </select></label>
+          </div>
+          <button id="dates-btn" type="button" class="secondary">Find best dates</button>
+          <div id="dates-out" class="small"></div>
+        </details>
+        <details id="nearby-box" class="insight">
+          <summary>Nearby alternatives <span class="muted">· does moving a few km help?</span></summary>
+          <div id="nearby-out" class="small muted"></div>
+        </details>
+        <button id="share-btn" type="button" class="linklike small">Copy a link to this site and dates</button>
         <div id="site-links" class="links small"></div>
       </section>
 
@@ -197,6 +226,10 @@
     <div class="tab-body" data-tab="compare">
       <p id="compare-empty" class="small muted">Add sites with “Add to comparison” (Site tab) or from the search results. Click a site name to open it.</p>
       <div id="compare-period" class="small muted"></div>
+      <div id="compare-actions" class="chips" hidden>
+        <button type="button" id="compare-sync" class="chip" data-tip="Re-run every column for the dates in the Period bar, for a like-for-like comparison of places.">Use current dates for all</button>
+        <button type="button" id="compare-csv" class="chip">Export CSV</button>
+      </div>
       <div class="table-wrap">
         <table id="compare-table" class="compare-table vertical" hidden><thead></thead><tbody></tbody></table>
       </div>
@@ -213,9 +246,60 @@
       </form>
     </div>
 
+    <!-- Learn: why the Moon (and its south pole) is so hard to plan for -->
+    <div class="tab-body learn" data-tab="learn">
+      <div class="learn-card">
+        <h3>No air, no twilight</h3>
+        <p>The Moon has no atmosphere, so there is no blue sky, no twilight and no light bending over the horizon. The instant
+          the Sun drops behind a crater rim, a site goes from full sunlight to deep space cold. That is why this app traces
+          the real terrain horizon (NASA LOLA) instead of a flat one: a mountain 50 km away can decide whether a lander has power.</p>
+      </div>
+      <div class="learn-card">
+        <h3>The polar Sun skims the horizon</h3>
+        <p>The Moon's axis is tilted only 1.5° to its path around the Sun. At the poles the Sun never climbs more than about
+          1.5° above a flat horizon: it circles the sky, sliding along the edge. Raise a site 100 m on a ridge and it may see the
+          Sun for weeks; drop into a crater and it may never see it at all. Try the horizon panorama in the Site tab on a polar site.</p>
+      </div>
+      <div class="learn-card">
+        <h3>Earth hangs still, but wobbles</h3>
+        <p>The Moon always shows Earth the same face, so from any one spot Earth stays in nearly the same part of the sky. The
+          near side always has Earth up; the far side never does. Near the edge (the limb), and at the poles, Earth sits right on
+          the horizon and the Moon's wobble (libration, about 7°) lifts it into view or hides it behind terrain over days and weeks.
+          No Earth in view means no direct radio contact without a relay satellite.</p>
+      </div>
+      <div class="learn-card">
+        <h3>Why ice hides in polar craters</h3>
+        <p>Water ice can survive for billions of years only where the surface stays below about −163 °C. At the poles, crater
+          floors the Sun never reaches are among the coldest places measured in the Solar System (below −230 °C). The 2009
+          LCROSS impact into Cabeus crater threw up water. That is why missions go to the south pole, and why they have to land
+          on the sunny rims nearby.</p>
+      </div>
+      <div class="learn-card">
+        <h3>Small changes, big effects</h3>
+        <p>Because the Sun and Earth sit so low at the poles, a few kilometres or a few days can change everything. Use
+          <b>Nearby alternatives</b> (Site tab) to see sunlight and Earth contact for every point within 3 km, the
+          <b>−1 d / +1 d / +1 mo</b> buttons to step the dates, and <b>Best landing dates</b> to find the next good launch slot.</p>
+      </div>
+      <div class="learn-card">
+        <h3>How to read this app</h3>
+        <p><b>Globe colours</b> (after a search): light blue = meets everything with ice in range, green = meets everything,
+          yellow = close. <b>Stat tiles</b> fill up by how good the value is. Hover any <span class="info-i">i</span> for the
+          reasoning. Data: JPL Horizons (Sun and Earth positions, including libration), NASA LOLA (terrain), LRO Diviner
+          (temperatures).</p>
+      </div>
+    </div>
+
     <p id="loading" class="small muted" hidden>Asking JPL Horizons…</p>
     <p id="error" class="error" hidden></p>
   </aside>
+
+  <!-- Enlarged sky & horizon panel -->
+  <div id="sky-modal" hidden>
+    <div class="sky-modal-card">
+      <div class="sky-modal-head"><b id="sky-modal-title"></b><button type="button" class="chip" id="sky-modal-close">✕ Close</button></div>
+      <div id="sky-panel-big" class="sky-panel"></div>
+    </div>
+  </div>
 
   <!-- 3D site view (web/site3d.js) -->
   <div id="view3d" hidden>

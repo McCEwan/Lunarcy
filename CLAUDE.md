@@ -11,6 +11,7 @@ Read `docs/ARCHITECTURE.md` first. It is the source of truth for the design and 
 - `api/finder.py`: the landing-site finder behind `POST /find`. A global screen of every 0.5° cell from one Horizons sub-point series (+ precomputed skylines), then connected regions and a terrain re-check of the top ones.
 - `api/ice.py`: the "Check for ice in deep craters" goal behind `GET /ice` and `/find`'s `goal`. Permanent shadow (LOLA skylines vs the Sun's highest possible path), Diviner cold traps (≤110 K) and rated named polar craters from `api/data/polar_craters.json` (USGS Gazetteer, built by `scripts/fetch_polar_craters.py`; published ice evidence must carry a `citation`).
 - `api/siteplan.py`: `GET /site/plan`: solar-array and comms-hub spots near a site (mast skylines vs the site's Sun/Earth series), drivable routes (Dijkstra, ≤15° ground, VIPER), and the way to the nearest ice target.
+- `api/scenarios.py`: `GET /site/dates` (best touchdown dates at a site) and `GET /site/nearby` (sunlight/Earth for every point within ±3 km, same skyline method as `/evaluate`).
 - `api/terrain.py`: site stats. Elevation and slope come from the active height source; temperature min/max come from real Diviner grids (`~/LunarPlannerData/diviner_tbol_minmax.npz`), falling back to **PLACEHOLDER** `data/t*_k.npy` grids.
 - `api/patch.py`: local terrain patches and horizon profiles (skylines) built from any height source. `SyntheticHeights` is the labelled fallback when no LOLA grid is downloaded.
 - `api/data/landers.json`: lander specs. Any value not taken from a published source goes in that entry's `estimated_fields`.
@@ -21,6 +22,7 @@ Read `docs/ARCHITECTURE.md` first. It is the source of truth for the design and 
 - `scripts/build_grids.py`: writes the **PLACEHOLDER** temperature grids used only when the Diviner file is missing.
 - `scripts/fetch_moontrek_layers.py`: stitches NASA Moon Trek WMTS layers into `web/assets/moontrek/*.jpg`.
 - `web/`: plain HTML/JS modules with globe.gl from a CDN. No build step. `web/links.js` builds QuickMap, Moon Trek and Horizons deep links. `web/site3d.js` is the three.js 3D site view and timelapse (x = east, y = up, z = −north).
+- `web/skycharts.js`: the Site tab's Sky & horizon panel (horizon panorama, elevation, in-view bars, power; plain SVG; shared time cursor).
 - `web/intro_earth.js`: decorative Earth on the opening screens (separate three.js canvas, removed after the intro).
 - `tests/`: pytest. Run with `python -m pytest`. Tests never call the network unless you set `RUN_LIVE=1`.
 - `docs/AI_USAGE.md`: running log of how AI was used on this project.

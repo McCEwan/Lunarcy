@@ -5,6 +5,7 @@
 import { horizonsUrl, moontrekUrl, quickmapUrl } from './links.js';
 import { open3dView } from './site3d.js';
 import { startIntroEarth } from './intro_earth.js';
+import { SkyPanel, downloadText } from './skycharts.js';
 
 const MAX_DATE = '2050-12-31';
 const FALLBACK_TEXTURE = 'https://cdn.jsdelivr.net/gh/vasturiano/globe.gl@v2.46.2/example/moon-landing-sites/lunar_surface.jpg';
@@ -97,6 +98,16 @@ function rateStats(site, r) {
     },
     sun_m2: { level: band(peakSun, 500, 150), fill: clamp01(peakSun / 1361),
       why: 'Strongest sunlight on a flat, upward-facing panel in the period. Green ≥500 W/m² (Sun ≥~22° up), yellow 150–500, red <150. Fill = share of the full 1,361 W/m² (Sun straight overhead). Near the poles the Sun stays low, so tilted or vertical panels do much better than this.' },
+    sun_el: (() => {
+      const maxEl = Math.max(...r.sky.map((p) => p.sun_el));
+      return {
+        level: band(maxEl, 20, 5), fill: clamp01(Math.sin(Math.max(maxEl, 0) * Math.PI / 180)),
+        why: `How high the Sun gets over the period (${maxEl.toFixed(1)}° at most). A flat solar panel collects sunlight in ` +
+          'proportion to sin(elevation): at 1.5°, the most the Sun ever reaches at the poles, that is under 3% of overhead Sun, ' +
+          'so polar missions use vertical panels that face the low Sun instead. Green ≥20°, yellow 5–20°, red <5°. ' +
+          'Fill = sin(highest elevation), the share of overhead sunlight a flat panel gets at its best.',
+      };
+    })(),
     elevation: { level: 'none', fill: 0, why: 'Height above the Moon\'s 1,737.4 km reference sphere (NASA LOLA). Not rated: elevation alone is neither good nor bad, though high rims often see more Sun and Earth.' },
     temperature: tempRating(r),
   };
@@ -112,6 +123,11 @@ const zs = (v) => v * zoomScale;
 // The selected site: hot magenta, which nothing on the grey Moon or in the heatmap uses.
 const PIN_COLOR = '#ff2bd6';
 const PIN = { radius: 1.1, altitude: 0.03, ring: 3.2 };   // degrees / globe radii at the whole-Moon view
+// Hover beacon: a thin beam straight up from the hovered site, 1.1 Moon radii long, so it
+// sticks out past the Moon's edge even when the site is on the far side.
+const BEACON_ALT = 1.1;
+const pinAlt = (s) => (s.beacon ? BEACON_ALT : zs(s === state.current ? PIN.altitude : PIN.altitude * 0.6));
+const pinRadius = (s) => (s.beacon ? zs(0.28) : zs(s === state.current ? PIN.radius : PIN.radius * 0.7));
 
 const globeEl = $('globe');
 const globe = new Globe(globeEl)
@@ -122,9 +138,11 @@ const globe = new Globe(globeEl)
   // User-picked sites
   .pointLat('lat')
   .pointLng('lng')
-  .pointAltitude((s) => zs(s === state.current ? PIN.altitude : PIN.altitude * 0.6))
-  .pointRadius((s) => zs(s === state.current ? PIN.radius : PIN.radius * 0.7))
-  .pointColor((s) => (s === state.current ? PIN_COLOR : COMPARE_PIN))
+  .pointAltitude(pinAlt)
+  .pointRadius(pinRadius)
+  .pointColor((s) => (s.beacon ? 'rgba(255, 255, 255, 0.9)' : s === state.current ? PIN_COLOR : COMPARE_PIN))
+  .pointResolution(16)
+  .onPointHover((s) => setHover(s && !s.beacon ? { lat: s.lat, lng: s.lng, name: s.name ?? 'Selected site' } : s?.beacon ? state.hover : null))
   // A pulsing ring around the selected site so it's easy to find
   .ringLat('lat')
   .ringLng('lng')
@@ -144,27 +162,32 @@ const globe = new Globe(globeEl)
   .pathDashAnimateTime(0)
   .pathLabel('label')
   .pointLabel((s) => esc(s.name ?? `${fmtLat(s.lat)}, ${fmtLon(s.lng)}`))
-  .onPointClick((s) => selectSite(s))
+  .onPointClick((s) => { if (!s.beacon) selectSite(s); })
   // Notable landing sites from /sites
   .labelLat('lat')
   .labelLng('lon')
   .labelText('name')
-  .labelSize((s) => zs(s.kind === 'ice' ? (s.rating === 'known' ? 0.8 : 0.6) : s.kind === 'region' ? 1.1 : 0.9))
+  .labelSize((s) => zs((isHovered(s) ? 1.5 : 1) * (s.kind === 'ice' ? (s.rating === 'known' ? 0.8 : 0.6) : s.kind === 'region' ? 1.1 : 0.9)))
   .labelDotRadius((s) => zs(s.kind === 'ice' ? 0.35 : s.kind === 'region' ? 0.3 : 0.45))
   .labelResolution(2)
-  .labelColor((s) => (s.kind === 'ice' ? ICE_COLORS[s.rating] : s.kind === 'region' ? (s.within_ice_range ? '#ff8a1f' : '#ffffff') : statusColor(s)))
+  .labelColor((s) => (isHovered(s) ? '#ffffff' : s.kind === 'ice' ? ICE_COLORS[s.rating] : s.kind === 'region' ? (s.within_ice_range ? '#ff8a1f' : '#ffffff') : statusColor(s)))
   .labelLabel((s) => (s.kind === 'ice' ? craterTooltip(s)
     : s.kind === 'region' ? regionTooltip(s)
       : `<b>${esc(s.name)}</b><br>${esc(s.place)}<br>${esc(s.date)} · ${esc(s.status)}`))
   .onLabelClick((s) => (s.kind === 'ice' ? pickCrater(s)
     : s.kind === 'region' ? newSite(s.lat, s.lon, null, regionSiteExtra(s.index)) : pickCatalogSite(s)))
+  .onLabelHover((s) => setHover(s ? { lat: s.lat, lng: s.lon, name: s.kind === 'region' ? `Search result ${s.name}` : s.name } : null))
   .onGlobeClick(({ lat, lng }) => newSite(lat, lng))
   // Sun and Earth markers (real directions from Horizons, not to scale)
   .htmlLat('lat')
   .htmlLng('lng')
   .htmlAltitude('alt')
   .htmlElement((d) => skyMarker(d))
-  .htmlElementVisibilityModifier((el, visible) => { el.style.opacity = visible ? '1' : '0.25'; });
+  .htmlElementVisibilityModifier((el, visible) => {
+    // The hover beacon's tag always shows; it says so when the site is behind the Moon.
+    if (el.classList.contains('beacon-tag')) { el.style.opacity = '1'; el.classList.toggle('behind', !visible); return; }
+    el.style.opacity = visible ? '1' : '0.25';
+  });
 // TODO (frontend): placeholder lander model at the active site via customLayerData.
 
 // ---- Sun & Earth on the globe ----------------------------------------------------
@@ -191,7 +214,21 @@ const POLE_MARKERS = [
 ];
 const poleData = () => (state.revealed ? POLE_MARKERS : []);
 
+// Everything on the html layer: pole badges, Sun/Earth markers, and the hover beacon's name tag.
+function refreshHtml() {
+  const tag = state.hover && state.revealed
+    ? [{ kind: 'beacon', lat: state.hover.lat, lng: state.hover.lng, alt: BEACON_ALT + 0.04, name: state.hover.name }]
+    : [];
+  globe.htmlElementsData([...poleData(), ...(state.skyMarkers ?? []), ...tag]);
+}
+
 function skyMarker(d) {
+  if (d.kind === 'beacon') {
+    const el = document.createElement('div');
+    el.className = 'beacon-tag';
+    el.textContent = d.name;
+    return el;
+  }
   if (d.kind === 'pole') {
     const el = document.createElement('div');
     el.className = `pole-marker ${d.pole === 'N' ? 'north' : 'south'}`;
@@ -242,11 +279,11 @@ function applyGlobeSky() {
     // crater detail readable; the direct Sun still makes day and night clearly different.
     sunLight.intensity = 2.3;
     ambientLight.intensity = 1.8;
-    globe.htmlElementsData(state.revealed ? [
-      ...poleData(),
+    state.skyMarkers = state.revealed ? [
       { kind: 'sun', lat: sub.sub_solar.lat, lng: sub.sub_solar.lon, alt: 1.1 },
       { kind: 'earth', lat: sub.sub_earth.lat, lng: sub.sub_earth.lon, alt: 0.7 },
-    ] : []);
+    ] : [];
+    refreshHtml();
     const when = sub.time.replace('T', ' ').replace('Z', '');
     const src = /Horizons/.test(sub.source) && !/APPROXIMATE/.test(sub.source) ? 'JPL Horizons' : 'approximate model';
     $('sky-caption').textContent = `Lit for ${when} UTC (${src}). Markers show direction only, not distance or size.`;
@@ -255,7 +292,8 @@ function applyGlobeSky() {
     sunLight.position.set(0, 1, 0);
     sunLight.intensity = defaultLighting.sun;
     ambientLight.intensity = defaultLighting.ambient;
-    globe.htmlElementsData(poleData());
+    state.skyMarkers = [];
+    refreshHtml();
     $('sky-caption').textContent = 'Even lighting, so every side of the Moon is easy to see.';
   }
 }
@@ -267,8 +305,8 @@ function onCameraChange() {
   if (Math.abs(k - zoomScale) / zoomScale < 0.08) return;
   zoomScale = k;
   // New accessor functions make globe.gl rebuild the objects at the new size.
-  globe.pointAltitude((s) => zs(s === state.current ? PIN.altitude : PIN.altitude * 0.6))
-    .pointRadius((s) => zs(s === state.current ? PIN.radius : PIN.radius * 0.7))
+  globe.pointAltitude(pinAlt)
+    .pointRadius(pinRadius)
     .ringMaxRadius(() => zs(PIN.ring)).ringPropagationSpeed(() => zs(PIN.ring * 1.4));
   globe.ringsData([...globe.ringsData()]);
   globe.labelSize(globe.labelSize()).labelDotRadius(globe.labelDotRadius());
@@ -283,6 +321,19 @@ function resizeGlobe() {
 }
 window.addEventListener('resize', resizeGlobe);
 resizeGlobe();
+
+// ---- Hover beacon -------------------------------------------------------------------------
+// Hovering a site anywhere (globe label or pin, Sites list, search results, comparison) shows a
+// white beam rising from it into space, its name at the top, and enlarges its label.
+const isHovered = (s) => !!state.hover && Math.abs(s.lat - state.hover.lat) < 1e-6 && Math.abs((s.lon ?? s.lng) - state.hover.lng) < 1e-6;
+function setHover(h) {
+  const same = (a, b) => (!a && !b) || (a && b && a.lat === b.lat && a.lng === b.lng);
+  if (same(h, state.hover)) return;
+  state.hover = h;
+  refreshPoints();
+  refreshHtml();
+  globe.labelsData([...globe.labelsData()]);
+}
 
 // Draw a site plan (GET /site/plan, via the 3D view) on the globe for the selected site.
 function showPlanOnGlobe(site, plan) {
@@ -322,6 +373,7 @@ function refreshPoints() {
   if (state.planSite && state.planSite !== state.current) { state.planSite = null; globe.pathsData([]); }
   const points = [...state.sites];
   if (state.current && !points.includes(state.current)) points.push(state.current);
+  if (state.hover && state.revealed) points.push({ beacon: true, lat: state.hover.lat, lng: state.hover.lng, name: state.hover.name });
   globe.pointsData(points);
   globe.ringsData(state.current ? [state.current] : []);
 }
@@ -418,8 +470,9 @@ async function evaluateSite(site, { mission = false } = {}) {
   const body = { lat: site.lat, lon: site.lng };
   body.terrain_level = site.terrainLevel ?? 'global';
   if (!mission) {
-    body.period_start = state.period.start;
-    if (state.period.mode === 'range' && state.period.end) body.period_end = state.period.end;
+    const per = site.period ?? state.period;      // comparison columns keep their own dates
+    body.period_start = per.start;
+    if (per.mode === 'range' && per.end) body.period_end = per.end;
   }
 
   showError(null);
@@ -464,7 +517,7 @@ async function loadCatalog() {
 async function newSite(lat, lng, catalog = null, extra = {}, { background = false } = {}) {
   const site = {
     id: crypto.randomUUID(), lat, lng,
-    name: catalog?.name ?? extra.name ?? null, catalog, info: extra.info ?? null,
+    name: catalog?.name ?? extra.name ?? null, catalog, info: extra.info ?? null, why: extra.why ?? null,
     lander: null,
     terrainLevel: 'global', result: null,
   };
@@ -489,6 +542,7 @@ function pickCatalogSite(s) {
 
 function selectSite(site) {
   state.current = site;
+  if (site.period) { state.period = { ...site.period }; syncPeriodInputs(); }
   refreshPoints();
   render();
   showTab('site');
@@ -675,9 +729,8 @@ async function onFind(e) {
     $('heatmap-toggle-wrap').hidden = false;
     $('show-heatmap').checked = true;
     applyHeatmap();
-    // Re-evaluate any sites already open over the new period.
-    const todo = [...new Set([state.current, ...state.sites].filter(Boolean))];
-    await Promise.all(todo.map(async (s) => { const r = await evaluateSite(s); if (r) s.result = r; }));
+    // Re-evaluate the open site over the new period (comparison columns keep their own dates).
+    await reevaluateCurrent();
     render();
   } catch (err) {
     $('req-status').className = 'small error';
@@ -728,10 +781,10 @@ function renderSearch() {
   const lvl = (v, min) => (v >= min ? 'good' : v >= 0.85 * min ? 'warn' : 'bad');
   $('region-list').innerHTML = s.regions.map((r, i) => `
     <li data-region="${i}" class="${r.passes_with_terrain ? '' : 'dim'}">
-      <b>${fmtLat(r.lat)}, ${fmtLon(r.lon)}</b>
-      <span class="info-i" data-tip="${esc(regionWhy(r, i, s))}" tabindex="0">i</span>
-      <span class="muted">· ${r.area_km2.toLocaleString()} km²</span>
-      <button class="add secondary" data-add-region="${i}" title="Add to comparison">+ Compare</button>
+      <div class="r-head">
+        <span class="r-title"><b>${fmtLat(r.lat)}, ${fmtLon(r.lon)}</b> <span class="muted">· ${r.area_km2.toLocaleString()} km²</span></span>
+        <button class="add secondary" data-add-region="${i}" title="Add to comparison">+ Compare</button>
+      </div>
       <div class="stats">
         <span class="${lvl(r.sun_pct, c.min_sun_pct)}">☀️ ${r.sun_pct}%</span>
         <span class="${lvl(r.earth_pct, c.min_earth_pct)}">🌍 ${r.earth_pct}%</span>
@@ -742,7 +795,15 @@ function renderSearch() {
       </div>
       ${r.nearest_ice_crater ? `<div class="small muted">Nearest rated crater: <b>${esc(r.nearest_ice_crater.name)}</b>
         (${r.nearest_ice_crater.rating === 'known' ? 'published ice evidence' : 'likely cold trap'}), ${r.nearest_ice_crater.distance_km} km</div>` : ''}
+      <button type="button" class="why-link" data-why="${i}" aria-expanded="false">Why this site?</button>
+      <div class="why-text" hidden>${whyList(regionWhy(r, i, s))}</div>
     </li>`).join('');
+}
+
+// An explanation as a lead sentence plus a bullet list (one bullet per further sentence).
+function whyList(text) {
+  const [head, ...rest] = text.split(/(?<=\.) /);
+  return `<p>${esc(head)}</p><ul>${rest.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`;
 }
 
 // Why a search result was recommended, and why it ranks where it does.
@@ -785,7 +846,8 @@ function regionTooltip(r) {
 function regionSiteExtra(i) {
   const r = state.search.regions[i];
   const ice = r.nearest_ice_crater ? ` · ${r.nearest_ice_crater.distance_km} km from ${r.nearest_ice_crater.name}` : '';
-  return { name: `Search result #${i + 1}`, info: `Best spot of a ${r.area_km2.toLocaleString()} km² region from the site finder${ice}` };
+  return { name: `Search result #${i + 1}`, info: `Best spot of a ${r.area_km2.toLocaleString()} km² region from the site finder${ice}`,
+    why: regionWhy(r, i, state.search) };
 }
 
 // Heatmap: three colours over the current globe texture.
@@ -926,18 +988,265 @@ async function onPeriodChange() {
     if (!end || end < start) { end = start; $('period-end').value = start; }
   }
   state.period = { mode, start, end: mode === 'range' ? end : null };
-  // Re-evaluate every site we're showing so the comparison stays like-for-like.
-  const todo = [...new Set([state.current, ...state.sites].filter(Boolean))];
-  await Promise.all(todo.map(async (s) => {
-    const r = await evaluateSite(s);
-    if (r) s.result = r;
-  }));
+  await reevaluateCurrent();
   render();
 }
 
+// The open site follows the Period bar. If it is a comparison column, a copy is opened instead,
+// so the column keeps its own dates ("Add to comparison" then adds the new dates as a new column).
+async function reevaluateCurrent() {
+  let site = state.current;
+  if (!site) return;
+  if (state.sites.includes(site)) {
+    site = { ...site, id: crypto.randomUUID(), period: null, result: null };
+    state.current = site;
+    refreshPoints();
+  } else {
+    site.period = null;
+  }
+  const r = await evaluateSite(site);
+  if (r) site.result = r;
+}
+
+// Step the dates by a number of days (keeps a range's length).
+function shiftPeriod(days) {
+  const add = (iso) => new Date(Date.parse(iso) + days * 864e5).toISOString().slice(0, 10);
+  const p = state.period;
+  $('period-start').value = add(p.start);
+  if (p.mode === 'range' && p.end) $('period-end').value = add(p.end);
+  onPeriodChange();
+}
+
+const periodKey = (p) => `${p.mode}:${p.start}:${p.end ?? ''}`;
+const scenarioKey = (s, p) => `${s.lat.toFixed(4)},${s.lng.toFixed(4)}|${periodKey(p)}`;
+const inComparison = (site) => state.sites.some((c) => scenarioKey(c, c.period ?? state.period) === scenarioKey(site, site.period ?? state.period));
+const periodShort = (p) => (p.mode === 'range' && p.end && p.end !== p.start ? `${p.start} → ${p.end}` : `${p.start} (1 day)`);
+
+// "Add to comparison": a column is a site AND its dates, so the same site can be compared
+// against itself on other dates.
 function onAddToComparison() {
   const site = state.current;
-  if (site && !state.sites.includes(site)) state.sites.push(site);
+  if (!site?.result || inComparison(site)) return;
+  const col = { ...site, id: crypto.randomUUID(), period: { ...(site.period ?? state.period) } };
+  state.sites.push(col);
+  state.current = col;
+  refreshPoints();
+  render();
+}
+
+// ---- Sky & horizon panel, best dates, nearby alternatives, sharing ----------------------
+
+const skyPanel = new SkyPanel($('sky-panel'), {
+  onEnlarge: () => openSkyModal(),
+  onTime: (i) => { if (bigSky) bigSky.setTime(i); },
+});
+let bigSky = null;
+
+async function skylineFor(site) {
+  if (site.skyline) return site.skyline;
+  try {
+    const q = new URLSearchParams({ lat: site.lat, lon: site.lng, level: site.terrainLevel ?? 'global' });
+    site.skyline = (await (await fetch(`/terrain/horizon?${q}`)).json()).elevation_deg;
+  } catch { site.skyline = null; }
+  return site.skyline;
+}
+
+// Called by render(): keep the sky panel and the insight boxes in step with the open site.
+async function updateInsights(site, r) {
+  if (!r) { $('sky-panel').innerHTML = ''; skyPanel.r = null; return; }
+  if (skyPanel.r !== r) {
+    const skyline = await skylineFor(site);
+    if (state.current !== site || site.result !== r) return;     // moved on while loading
+    skyPanel.set(r, skyline);
+  }
+  const key = `${site.lat},${site.lng}|${periodKey(site.period ?? state.period)}`;
+  if (state.nearbyKey !== key) {
+    state.nearbyKey = key;
+    $('nearby-out').innerHTML = '<span class="muted">Open to check every point within 3 km for the same dates (a few seconds).</span>';
+    if ($('nearby-box').open) loadNearby();
+  }
+  if (state.datesKey !== `${site.lat},${site.lng}`) {
+    state.datesKey = `${site.lat},${site.lng}`;
+    $('dates-out').innerHTML = '';
+  }
+}
+
+function openSkyModal() {
+  const site = state.current;
+  if (!site?.result) return;
+  $('sky-modal').hidden = false;
+  $('sky-modal-title').textContent = `${site.name ?? 'Custom site'} · ${fmtLat(site.lat)}, ${fmtLon(site.lng)} · ${periodText(site.result.period)}`;
+  bigSky?.destroy();
+  bigSky = new SkyPanel($('sky-panel-big'), { large: true, onTime: (i) => skyPanel.setTime(i) });
+  bigSky.set(site.result, site.skyline, skyPanel.t);
+}
+function closeSkyModal() {
+  $('sky-modal').hidden = true;
+  bigSky?.destroy();
+  bigSky = null;
+  $('sky-panel-big').innerHTML = '';
+}
+
+// Best landing dates at the open site (GET /site/dates).
+async function onFindDates() {
+  const site = state.current;
+  if (!site) return;
+  const mission = Math.min(60, Math.max(1, Number($('dates-mission').value) || 14));
+  const days = Math.min(366, Math.max(7, Number($('dates-days').value) || 60));
+  const start = (site.period ?? state.period).start;
+  const q = new URLSearchParams({ lat: site.lat, lon: site.lng, start, days, mission_days: mission, priority: $('dates-priority').value });
+  $('dates-btn').disabled = true;
+  $('dates-out').innerHTML = '<span class="muted">Scoring every hour as a touchdown time… (the first search for a new span asks JPL Horizons)</span>';
+  try {
+    const res = await fetch(`/site/dates?${q}`);
+    const out = await res.json();
+    if (!res.ok) throw new Error(typeof out.detail === 'string' ? out.detail : `HTTP ${res.status}`);
+    if (state.current !== site) return;
+    renderDates(out);
+  } catch (err) {
+    $('dates-out').innerHTML = `<span class="error">Date search failed: ${esc(err.message)}</span>`;
+  } finally {
+    $('dates-btn').disabled = false;
+  }
+}
+
+function renderDates(out) {
+  const scoreName = { both: 'average of Sun % and Earth %', sun: 'Sun %', comms: 'Earth %' }[out.priority];
+  const col = (v) => (v >= 75 ? 'rgba(76,209,138,.85)' : v >= 50 ? 'rgba(255,204,77,.85)' : 'rgba(255,107,107,.75)');
+  const why = `${out.method} Score = ${scoreName}; a touchdown with the Sun behind terrain loses 5 points, because a ` +
+    'lander needs light to start up. Each bar is one day at its best hour; taller is better. Click a bar or a pick to load those dates.';
+  const strip = out.daily.map((d) => `<span data-date="${d.date}" style="height:${Math.max(4, d.score)}%;background:${col(d.score)}"
+      data-tip="${d.date}: best touchdown ${d.time.slice(11, 16)} UTC · Sun ${d.sun_pct}% · Earth ${d.earth_pct}% · both ${d.both_pct}% over ${out.mission_days} days"></span>`).join('');
+  const picks = out.best.map((d, i) => `<li data-date="${d.date}">
+      <b>#${i + 1} ${d.date}</b> ${d.time.slice(11, 16)} UTC · Sun ${d.sun_pct}% · Earth ${d.earth_pct}% · both ${d.both_pct}%
+      <span class="muted">· ${d.sun_up_at_touchdown ? (d.hours_to_sunset === null ? 'Sun stays up all mission' : `Sun sets after ${d.hours_to_sunset < 48 ? d.hours_to_sunset + ' h' : (d.hours_to_sunset / 24).toFixed(1) + ' days'}`) : 'lands in darkness'}</span></li>`).join('');
+  state.datesMission = out.mission_days;
+  $('dates-out').innerHTML = `
+    <div class="muted" style="margin-top:6px">Each day's best touchdown over the next ${out.days} days, for a ${out.mission_days}-day mission
+      <span class="info-i" data-tip="${esc(why)}" tabindex="0">i</span></div>
+    <div class="date-strip">${strip}</div>
+    <div class="date-axis"><span>${out.daily[0].date}</span><span>${out.daily.at(-1).date}</span></div>
+    <ol class="date-picks">${picks}</ol>`;
+}
+
+function applyDates(dateIso) {
+  const days = Math.max(1, Math.round(state.datesMission ?? 14));
+  const end = new Date(Date.parse(dateIso) + (days - 1) * 864e5).toISOString().slice(0, 10);
+  document.querySelector('input[name="period-mode"][value="range"]').checked = true;
+  $('period-start').value = dateIso;
+  $('period-end').value = end;
+  onPeriodChange();
+}
+
+// Nearby alternatives: every point within 3 km, same dates (GET /site/nearby).
+async function loadNearby() {
+  const site = state.current;
+  if (!site) return;
+  const per = site.period ?? state.period;
+  const q = new URLSearchParams({ lat: site.lat, lon: site.lng, start: per.start });
+  if (per.mode === 'range' && per.end && per.end !== per.start) q.set('end', per.end);   // one day → a lunar day
+  const key = state.nearbyKey;
+  $('nearby-out').innerHTML = '<span class="muted">Tracing a terrain skyline for 81 points around the site…</span>';
+  try {
+    const res = await fetch(`/site/nearby?${q}`);
+    const out = await res.json();
+    if (!res.ok) throw new Error(typeof out.detail === 'string' ? out.detail : `HTTP ${res.status}`);
+    if (state.nearbyKey !== key) return;
+    renderNearby(out);
+  } catch (err) {
+    $('nearby-out').innerHTML = `<span class="error">Nearby check failed: ${esc(err.message)}</span>`;
+  }
+}
+
+function renderNearby(out) {
+  const compass = (deg) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+  const km = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+  const c = (out.n - 1) / 2;
+  const grid = (key, rgb, label) => {
+    const cells = [];
+    for (let r = 0; r < out.n; r++) {
+      for (let k = 0; k < out.n; k++) {
+        const v = out[key][r][k];
+        const de = (k - c) * out.spacing_m, dn = (c - r) * out.spacing_m;
+        const where = r === c && k === c ? 'the site itself' : `${km(Math.hypot(de, dn))} ${compass((Math.atan2(de, dn) * 180 / Math.PI + 360) % 360)}`;
+        const best = key === 'sun_pct' ? out.best_sun : out.best_earth;
+        const isBest = Math.abs(out.lat[r][k] - best.lat) < 1e-5 && Math.abs(out.lon[r][k] - best.lon) < 1e-5;
+        cells.push(`<span class="${r === c && k === c ? 'centre' : isBest ? 'best' : ''}" data-lat="${out.lat[r][k]}" data-lon="${out.lon[r][k]}"
+          style="background:rgba(${rgb},${(0.08 + 0.92 * v / 100).toFixed(2)})"
+          data-tip="${where}: Sun ${out.sun_pct[r][k]}% · Earth ${out.earth_pct[r][k]}% · slope ${out.slope_deg[r][k]}°. Click to open."></span>`);
+      }
+    }
+    return `<figure><figcaption>${label}</figcaption><div class="nearby-grid" style="grid-template-columns:repeat(${out.n},1fr)">${cells.join('')}</div></figure>`;
+  };
+  const b = out.best_both;
+  const why = `${out.method} The magenta square is the site; white marks the best point for each measure.`;
+  $('nearby-out').innerHTML = `
+    <div>Within ${out.radius_m / 1000} km, sunlight ranges <b>${out.spread.sun_pct[0]}–${out.spread.sun_pct[1]}%</b> and
+      Earth in view <b>${out.spread.earth_pct[0]}–${out.spread.earth_pct[1]}%</b> (site: ${out.centre.sun_pct}% / ${out.centre.earth_pct}%).
+      <span class="info-i" data-tip="${esc(why)}" tabindex="0">i</span></div>
+    <div class="nearby-grids">${grid('sun_pct', '255,210,63', 'Sunlight %')}${grid('earth_pct', '111,182,255', 'Earth in view %')}</div>
+    <div>${b.distance_m < 1 ? '<b>This site is already the best spot within 3 km</b> for Sun and Earth together.'
+      : `Best for both: <b>${km(b.distance_m)} ${compass(b.bearing_deg)}</b> · Sun ${b.sun_pct}% · Earth ${b.earth_pct}% · slope ${b.slope_deg}°
+      <button type="button" class="chip" id="nearby-go" data-lat="${b.lat}" data-lon="${b.lon}">Open it</button>`}</div>
+    <div class="muted">${out.n}×${out.n} points, ${out.spacing_m} m apart. North is up. Click any square to open that spot.</div>`;
+}
+
+// Share: the site and its dates in the address (#lat=..&lon=..&from=..&to=..&name=..).
+function shareUrl(site) {
+  const per = site.period ?? state.period;
+  const p = new URLSearchParams({ lat: site.lat.toFixed(5), lon: site.lng.toFixed(5), from: per.start });
+  if (per.mode === 'range' && per.end) p.set('to', per.end);
+  if (site.name) p.set('name', site.name);
+  return `${location.origin}${location.pathname}#${p}`;
+}
+async function onShare() {
+  const site = state.current;
+  if (!site) return;
+  const url = shareUrl(site);
+  history.replaceState(null, '', url);
+  try { await navigator.clipboard.writeText(url); $('share-btn').textContent = 'Link copied ✓'; }
+  catch { $('share-btn').textContent = 'Link is in the address bar ✓'; }
+  setTimeout(() => { $('share-btn').textContent = 'Copy a link to this site and dates'; }, 2500);
+}
+function readShare() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const lat = Number(p.get('lat')), lon = Number(p.get('lon'));
+  if (!p.has('lat') || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const okDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? '');
+  return { lat, lon, from: okDate(p.get('from')) ? p.get('from') : null, to: okDate(p.get('to')) ? p.get('to') : null, name: p.get('name') };
+}
+function openShared(sh) {
+  $('intro').hidden = true;
+  if (sh.from) {
+    state.period = sh.to && sh.to >= sh.from ? { mode: 'range', start: sh.from, end: sh.to } : { mode: 'day', start: sh.from, end: null };
+  }
+  syncPeriodInputs();
+  revealApp();
+  setPanelCollapsed(false);            // a shared link is about the site: show its panel
+  newSite(sh.lat, sh.lon, null, sh.name ? { name: sh.name } : {});
+}
+
+// Compare tab: export as CSV, and re-run every column for the Period bar's dates.
+function exportCompareCsv() {
+  const rows = [...$('compare-table').querySelectorAll('tr')].map((tr) => [...tr.children].map((c) => {
+    const t = c.cloneNode(true);
+    t.querySelectorAll('button').forEach((b) => b.remove());
+    t.querySelectorAll('br').forEach((br) => br.replaceWith(' '));
+    return `"${t.textContent.trim().replace(/\s+/g, ' ').replace(/"/g, '""')}"`;
+  }).join(','));
+  downloadText('lunarcy-comparison.csv', rows.join('\n'));
+}
+async function syncCompareDates() {
+  await Promise.all(state.sites.map(async (col) => {
+    col.period = { ...state.period };
+    col.result = null;
+    renderCompareList();
+    const r = await evaluateSite(col);
+    if (r) col.result = r;
+  }));
+  // Drop duplicates the sync may have created (same site, now same dates).
+  const seen = new Set();
+  state.sites = state.sites.filter((c) => { const k = scenarioKey(c, c.period); if (seen.has(k)) return false; seen.add(k); return true; });
   refreshPoints();
   render();
 }
@@ -1004,6 +1313,9 @@ function render() {
     ? `${esc(c.agency)} · ${esc(c.date)} · ${esc(c.status)} · ${esc(c.place)}` +
       (c.note ? `<br><span class="muted">${esc(c.note)}</span>` : '')
     : site.info ? `<span class="muted">${esc(site.info)}</span>` : '';
+  // Why the finder recommended this site (search results): the same reasoning as the list's "i".
+  $('site-why').hidden = !site.why;
+  if (site.why) $('site-why').innerHTML = `<summary>Why this site was recommended</summary>${whyList(site.why)}`;
   const start = r?.sky?.[0]?.t ?? new Date().toISOString();
   const altKm = (r?.terrain?.site_elevation_m ?? 0) / 1000;
   $('site-links').innerHTML = [
@@ -1020,6 +1332,7 @@ function render() {
     $('site-terrain').innerHTML = '';
     $('view3d-btn').disabled = true;
     $('compare-btn').disabled = true;
+    updateInsights(site, null);
     return;
   }
 
@@ -1059,16 +1372,24 @@ function render() {
     ['Elevation', fmt(s.elevation_m, 0, ' m'), '', rating.elevation],
     ['Temperature', temp, `<div class="sub">${realTemps(r) ? 'night low – day high (Diviner)' : 'placeholder'}</div>`, rating.temperature],
     ['Peak sunlight on panel', fmt(peakSun, 0, ' W/m²'), '<div class="sub">flat panel, per m²</div>', rating.sun_m2],
+    (() => {
+      const up = r.sky.filter((p) => p.sun_visible);
+      const avg = up.length ? up.reduce((a, p) => a + p.sun_el, 0) / up.length : null;
+      const maxEl = Math.max(...r.sky.map((p) => p.sun_el));
+      return ['Sun elevation', `max ${maxEl.toFixed(1)}°`,
+        `<div class="sub">${avg === null ? 'never in view' : `avg ${avg.toFixed(1)}° while in view`}</div>`, rating.sun_el];
+    })(),
   ];
   $('site-tiles').innerHTML = tiles
     .map(([k, v, sub, rt]) => `<div class="tile ${rt.level}" style="--fill:${(100 * (rt.fill ?? 0)).toFixed(0)}%" ` +
       `data-tip="${esc(rt.why)}" tabindex="0"><div class="k">${k} <span class="info-i" aria-hidden="true">i</span></div>` +
       `<div class="v">${esc(v)}</div>${sub}</div>`)
     .join('') + (s.slope_deg === null ? '<p class="small muted">No terrain data here.</p>' : '');
-  $('compare-btn').disabled = state.sites.includes(site);
-  $('compare-btn').textContent = state.sites.includes(site) ? 'In comparison ✓' : 'Add to comparison';
+  $('compare-btn').disabled = inComparison(site);
+  $('compare-btn').textContent = inComparison(site) ? 'In comparison ✓' : 'Add these dates to comparison';
 
   $('view3d-btn').disabled = false;
+  updateInsights(site, r);
 
   // Sources
   $('sources-box').hidden = r.sources.length === 0;
@@ -1084,10 +1405,9 @@ function renderCompareList() {
   $('compare-count').textContent = has ? `(${state.sites.length})` : '';
   $('compare-empty').hidden = has;
   $('compare-table').hidden = !has;
+  $('compare-actions').hidden = !has;
   if (!has) { $('compare-period').textContent = ''; return; }
-  const day = state.period.mode === 'day';
-  const withResult = state.sites.find((s) => s.result);
-  $('compare-period').textContent = withResult ? `Period: ${periodText(withResult.result.period)}` : '';
+  $('compare-period').textContent = 'Each column is a site and its own dates. Add the same site on other dates to see how a schedule slip changes it.';
 
   const cols = state.sites.map((s) => ({ s, r: s.result, rt: s.result ? rateStats(s, s.result) : null }));
   $('compare-table').querySelector('thead').innerHTML = '<tr><th></th>' + cols.map(({ s }) => {
@@ -1106,10 +1426,10 @@ function renderCompareList() {
   };
   const rows = [
     ['Where', (c) => cell(c, `${fmtLat(c.s.lat)}<br>${fmtLon(c.s.lng)}`)],
-    [day ? 'Daylight (of 24 h)' : 'Sunlight', (c) => cell(c,
-      day ? `${c.r?.site.sun_hours.toFixed(1)} h` : fmt(c.r?.site.sunlight_pct, 0, '%'), c.rt?.sunlight)],
-    [day ? 'Earth in view (of 24 h)' : 'Earth in view', (c) => cell(c,
-      day ? `${c.r?.site.earth_hours.toFixed(1)} h` : fmt(c.r?.site.earth_visible_pct, 0, '%'), c.rt?.earth)],
+    ['Dates', (c) => cell(c, c.s.period ? periodShort(c.s.period).replace(' → ', '<br>→ ') : '—')],
+    ['Sunlight', (c) => cell(c, fmt(c.r?.site.sunlight_pct, 0, '%'), c.rt?.sunlight)],
+    ['Earth in view', (c) => cell(c, fmt(c.r?.site.earth_visible_pct, 0, '%'), c.rt?.earth)],
+    ['Sun max elevation', (c) => cell(c, c.r ? `${Math.max(...c.r.sky.map((p) => p.sun_el)).toFixed(1)}°` : '', c.rt?.sun_el)],
     ['Avg sun on panel', (c) => cell(c, c.r ? fmt(c.r.power_w.reduce((a, p) => a + p.w_m2, 0) / c.r.power_w.length, 0, ' W/m²') : '')],
     ['Peak sun on panel', (c) => cell(c, c.r ? fmt(Math.max(...c.r.power_w.map((p) => p.w_m2)), 0, ' W/m²') : '', c.rt?.sun_m2)],
     ['Slope', (c) => cell(c, fmt(c.r?.site.slope_deg, 1, '°'), c.rt?.slope)],
@@ -1195,8 +1515,50 @@ $('back-to-choice').addEventListener('click', () => {
 });
 $('edit-req').addEventListener('click', () => showLanding(true));
 $('show-heatmap').addEventListener('change', () => { applyHeatmap(); refreshLabels(); });
+$('period-step').addEventListener('click', (e) => { const d = Number(e.target.dataset?.shift); if (d) shiftPeriod(d); });
+$('dates-btn').addEventListener('click', onFindDates);
+$('dates-out').addEventListener('click', (e) => { const d = e.target.closest('[data-date]')?.dataset.date; if (d) applyDates(d); });
+$('nearby-box').addEventListener('toggle', () => { if ($('nearby-box').open && !$('nearby-out').querySelector('.nearby-grids')) loadNearby(); });
+$('nearby-out').addEventListener('click', (e) => {
+  const cell = e.target.closest('[data-lat]');
+  if (cell) newSite(Number(cell.dataset.lat), Number(cell.dataset.lon), null, { name: 'Nearby alternative', info: `Within 3 km of ${state.current?.name ?? 'the previous site'}` });
+});
+$('share-btn').addEventListener('click', onShare);
+// Hovering a site in the panel lights its beacon on the globe.
+const hoverFromPanel = (e) => {
+  const li = e.target.closest('#site-list li[data-site], #region-list li[data-region], #compare-table th[data-id]');
+  if (!li) { setHover(null); return; }
+  if (li.dataset.site) {
+    const c = state.catalog.find((x) => x.id === li.dataset.site);
+    if (c) setHover({ lat: c.lat, lng: c.lon, name: c.name });
+  } else if (li.dataset.region !== undefined) {
+    const r = state.search?.regions[Number(li.dataset.region)];
+    if (r) setHover({ lat: r.lat, lng: r.lon, name: `Search result #${Number(li.dataset.region) + 1}` });
+  } else {
+    const col = state.sites.find((x) => x.id === li.dataset.id);
+    if (col) setHover({ lat: col.lat, lng: col.lng, name: col.name ?? 'Compared site' });
+  }
+};
+$('panel').addEventListener('mouseover', hoverFromPanel);
+$('panel').addEventListener('mouseleave', () => setHover(null));
+$('compare-csv').addEventListener('click', exportCompareCsv);
+$('compare-sync').addEventListener('click', syncCompareDates);
+$('sky-modal-close').addEventListener('click', closeSkyModal);
+$('sky-modal').addEventListener('click', (e) => { if (e.target === $('sky-modal')) closeSkyModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('sky-modal').hidden) closeSkyModal(); });
+$('choice-learn').addEventListener('click', () => { chooseExplore(); showTab('learn'); setPanelCollapsed(false); });
 $('show-ice').addEventListener('change', onShowIce);
 $('region-list').addEventListener('click', async (e) => {
+  const why = e.target.closest('.why-link');
+  if (why) {                                   // expand / collapse the explanation, don't open the site
+    e.stopPropagation();
+    const box = why.nextElementSibling;
+    box.hidden = !box.hidden;
+    why.setAttribute('aria-expanded', String(!box.hidden));
+    why.textContent = box.hidden ? 'Why this site?' : 'Hide explanation';
+    return;
+  }
+  if (e.target.closest('.why-text')) return;   // reading the explanation shouldn't open the site
   const addIdx = e.target.dataset?.addRegion;
   if (addIdx !== undefined) {
     e.stopPropagation();
@@ -1204,7 +1566,8 @@ $('region-list').addEventListener('click', async (e) => {
     e.target.disabled = true;
     e.target.textContent = 'Adding…';
     const site = await newSite(r.lat, r.lon, null, regionSiteExtra(Number(addIdx)), { background: true });
-    if (!state.sites.includes(site)) state.sites.push(site);
+    site.period = { ...state.period };
+    if (!inComparison(site)) state.sites.push(site);
     refreshPoints();
     render();
     e.target.textContent = 'In comparison ✓';
@@ -1240,7 +1603,9 @@ $('region-list').addEventListener('click', async (e) => {
   syncPeriodInputs();
   showTab('search');
   renderSearch();
-  startIntro();
+  const shared = readShare();
+  if (shared) openShared(shared);
+  else startIntro();
 })();
 
 $('intro').addEventListener('click', leaveIntro);

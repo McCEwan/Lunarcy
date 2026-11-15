@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import logging
 import os
 import time
@@ -19,6 +20,7 @@ from .lola import DetailedHeights, DetailStore, LolaGlobalHeights
 from .finder import Criteria, Skylines, find_regions
 from .ice import IceMap
 from .siteplan import plan_site
+from .scenarios import PRIORITIES, best_dates, nearby
 from . import ephemeris
 from .evaluator import LUNAR_DAY_DAYS
 from .models import EvaluateRequest, EvaluateResponse, FindRequest
@@ -193,6 +195,56 @@ def ice() -> dict:
     return out
 
 
+def _site_sky(lat: float, lon: float, start: date | None, end: date | None, level: str = "global",
+              default_days: float = LUNAR_DAY_DAYS):
+    """The site's height source and one hourly Sun/Earth series (start..end inclusive, or
+    `default_days` from start/today). Shared by the /site/* endpoints."""
+    if end and start and end < start:
+        raise HTTPException(422, detail="end must not be before start")
+    first = start or datetime.now(timezone.utc).date()
+    days = (end - first).days + 1 if end else default_days
+    heights = heights_for(lat, lon, level)
+    site_alt = float(heights.heights(np.array(lat), np.array(lon)))
+    times = ephemeris.time_grid(first, days, 1.0)
+    return first, days, heights, EPHEM.sky(lat, lon, times, alt_m=site_alt), times
+
+
+@app.get("/site/dates")
+def site_dates(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+    start: date | None = None,
+    days: int = Query(60, ge=1, le=366),
+    mission_days: float = Query(14, ge=1, le=60),
+    priority: str = Query("both", pattern="^(both|sun|comms)$"),
+) -> dict:
+    """Best touchdown dates at one site: every hour over `days` from `start` is scored on the
+    following `mission_days` (Sun, Earth and both above the real terrain skyline)."""
+    first = start or datetime.now(timezone.utc).date()
+    span = days + math.ceil(mission_days) + 1
+    _, _, heights, sky, times = _site_sky(lat, lon, first, None, "global", default_days=span)
+    skyline = horizon_profile(heights, lat, lon)["elevation_deg"]
+    out = best_dates(sky, skyline, times, first, days, mission_days, priority)
+    out["sources"] = [sky.source, heights.source]
+    return out
+
+
+@app.get("/site/nearby")
+def site_nearby(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+    start: date | None = None,
+    end: date | None = None,
+    radius_km: float = Query(3.0, ge=0.5, le=15),
+) -> dict:
+    """How sunlight and Earth contact change within a few km of a site (same dates)."""
+    first, days, heights, sky, _ = _site_sky(lat, lon, start, end, "global")
+    out = nearby(heights, lat, lon, sky, radius_m=radius_km * 1000)
+    out["period"] = {"start": f"{first}T00:00Z", "days": round(days, 2)}
+    out["sources"] = [sky.source, heights.source]
+    return out
+
+
 @app.get("/site/plan")
 def site_plan(
     lat: float = Query(ge=-90, le=90),
@@ -204,13 +256,7 @@ def site_plan(
     """Solar array and comms hub spots near a landing site, the drivable route between them,
     and the way to the nearest ice candidate (api/siteplan.py). Period: start..end (UTC dates,
     inclusive), default the next lunar day."""
-    if end and start and end < start:
-        raise HTTPException(422, detail="end must not be before start")
-    first = start or datetime.now(timezone.utc).date()
-    days = (end - first).days + 1 if end else LUNAR_DAY_DAYS
-    heights = heights_for(lat, lon, level)
-    site_alt = float(heights.heights(np.array(lat), np.array(lon)))
-    sky = EPHEM.sky(lat, lon, ephemeris.time_grid(first, days, 1.0), alt_m=site_alt)
+    first, days, heights, sky, _ = _site_sky(lat, lon, start, end, level)
     try:
         ice_src = ice_map()
     except Exception:
