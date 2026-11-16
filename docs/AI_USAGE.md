@@ -455,6 +455,16 @@ A running record of how we used AI tools on Lunar Planner: what the AI did, what
 - **What a human checked:** _[fill in]_
 - **Still unverified / known limits:** the Jeremy Hansen line follows the script and was not re-checked. "Under a minute" for a whole-Moon search comes from one run (30.5 s with the ice goal). The challenge page still could not be read from the cloud session.
 
+### 2026-11-16 · Session 31: deployed to Azure (branch `docs/pitch-deck`)
+
+- **Who:** _[team member name]_
+- **Tool:** Claude Code (Opus 5.5), cloud session, Azure CLI
+- **Prompted with:** "pull the newest version… you have permission to automatically run any commands. Please try to get the website up."
+- **What the AI did:** merged the latest `main`; added `startup.sh` (downloads LOLA LDEM_64 and builds Diviner on first start, then serves); signed in with device-code login. The first account was a Sheridan College IT tenant, so it stopped before creating anything and the user switched to their personal account (Free Trial, spending limit on). App Service was refused for the Free Trial offer (B1 quota 0, quota request failed `ResourceNotAvailableForOffer`), so it created a Standard_B2ls_v2 Ubuntu VM in Canada East (Canada Central had no capacity for B2s), opened ports 80/443 only, shipped the code through a private blob with a 2-day SAS link, installed the app as a systemd service behind Caddy, and added `scripts/setup_vm.sh` and the live setup to `docs/DEPLOY.md`.
+- **Checks the AI ran on its own output:** `/health` on the VM reports LOLA LDEM_64, Diviner loaded and Horizons; `https://lunarcy-earth.canadaeast.cloudapp.azure.com` returns 200 with a Let's Encrypt certificate.
+- **What a human checked:** _[fill in]_
+- **Still unverified / known limits:** lunarcy.earth works only after the GoDaddy DNS records are added. The Free Trial ends after 30 days unless upgraded, and the VM stops with it. The finder skylines (`build_skylines.py`) were not built on the server, so the finder uses the smooth-Moon screen plus a terrain re-check.
+
 ---
 
 ## Entry template

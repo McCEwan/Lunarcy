@@ -1,4 +1,31 @@
-# Deploying Lunarcy (Azure App Service + lunarcy.earth)
+# Deploying Lunarcy
+
+## What is live now (Nov 2026)
+
+Azure **Free Trial** subscriptions can't use App Service (quota 0, request refused with
+`ResourceNotAvailableForOffer`), so Lunarcy runs on a small VM instead:
+
+| | |
+|---|---|
+| VM | `lunarcy-vm`, Ubuntu 24.04, Standard_B2ls_v2 (2 vCPU, 4 GB), **Canada East** (Canada Central had no capacity) |
+| Resource group | `lunarcy-rg` (also holds storage account `lunarcydeploy2246`, used to ship the code) |
+| Public IP | **20.104.186.227** (static) · `lunarcy-earth.canadaeast.cloudapp.azure.com` |
+| Ports | 80 and 443 only; manage it with `az vm run-command invoke` (no SSH rule) |
+| App | systemd service `lunarcy` → `startup.sh` (data in `/opt/lunarcy/data`), uvicorn on 127.0.0.1:8000 |
+| HTTPS | Caddy reverse proxy, automatic Let's Encrypt certificates for `lunarcy.earth`, `www.lunarcy.earth` and the Azure name |
+| Setup script | `scripts/setup_vm.sh` (run as root with `CODE_URL` set to a .tar.gz of the repo) |
+
+**GoDaddy DNS** for lunarcy.earth: `A @ → 20.104.186.227` and `CNAME www → lunarcy-earth.canadaeast.cloudapp.azure.com`
+(remove GoDaddy's parking/forwarding records).
+
+**Update the site:** `git archive` the repo, upload it to the storage account, make a read-only SAS link,
+and re-run `scripts/setup_vm.sh` with `CODE_URL` set to it (it keeps the Horizons cache and the data).
+
+The App Service guide below still applies to a Pay-As-You-Go or student subscription.
+
+---
+
+## Option: Azure App Service
 
 Lunarcy is a FastAPI server that also serves `web/`, so it needs a host that runs Python,
 with persistent disk for the NASA data (~540 MB). Azure App Service (Linux) fits.
