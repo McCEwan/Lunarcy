@@ -12,10 +12,10 @@ Azure **Free Trial** subscriptions can't use App Service (quota 0, request refus
 | Public IP | **20.104.186.227** (static) · `lunarcy-earth.canadaeast.cloudapp.azure.com` |
 | Ports | 80 and 443 only; manage it with `az vm run-command invoke` (no SSH rule) |
 | App | systemd service `lunarcy` → `startup.sh` (data in `/opt/lunarcy/data`), uvicorn on 127.0.0.1:8000 |
-| HTTPS | Caddy reverse proxy, automatic Let's Encrypt certificates for `lunarcy.earth`, `www.lunarcy.earth` and the Azure name |
+| HTTPS | Caddy reverse proxy, automatic Let's Encrypt certificates for `lunarcy.world`, `www.lunarcy.world` and the Azure name |
 | Setup script | `scripts/setup_vm.sh` (run as root with `CODE_URL` set to a .tar.gz of the repo) |
 
-**GoDaddy DNS** for lunarcy.earth: `A @ → 20.104.186.227` and `CNAME www → lunarcy-earth.canadaeast.cloudapp.azure.com`
+**GoDaddy DNS** for lunarcy.world: `A @ → 20.104.186.227` and `CNAME www → lunarcy-earth.canadaeast.cloudapp.azure.com`
 (remove GoDaddy's parking/forwarding records).
 
 **Update the site:** `git archive` the repo, upload it to the storage account, make a read-only SAS link,

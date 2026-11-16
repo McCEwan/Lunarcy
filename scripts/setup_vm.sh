@@ -49,7 +49,7 @@ if ! command -v caddy >/dev/null; then
   apt-get update -y -q && apt-get install -y -q caddy
 fi
 cat > /etc/caddy/Caddyfile <<'EOF'
-lunarcy.earth, www.lunarcy.earth, lunarcy-earth.canadaeast.cloudapp.azure.com {
+lunarcy.world, www.lunarcy.world, lunarcy-earth.canadaeast.cloudapp.azure.com {
 	encode gzip
 	reverse_proxy 127.0.0.1:8000
 }
