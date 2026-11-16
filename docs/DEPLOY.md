@@ -83,18 +83,18 @@ demo sites so the JPL Horizons cache is warm before judging.
 Optional (10–15 min, sharper finder and permanent-shadow grid): **SSH** into the app and run
 `python scripts/build_skylines.py`, then restart.
 
-## 4. Point lunarcy.earth at it
+## 4. Point lunarcy.world at it
 
-1. App Service → **Custom domains → Add custom domain** → `lunarcy.earth`.
+1. App Service → **Custom domains → Add custom domain** → `lunarcy.world`.
    Azure shows an **A** record (the app's IP) and a **TXT** record `asuid` (verification code).
-2. GoDaddy → My Products → lunarcy.earth → **DNS**:
+2. GoDaddy → My Products → lunarcy.world → **DNS**:
    - Delete GoDaddy's parking A record for `@` (and any "Forwarding").
    - Add **A** `@` → the IP Azure shows.
    - Add **TXT** `asuid` → the code Azure shows.
    - For `www`: **CNAME** `www` → `<app-name>.azurewebsites.net`, plus **TXT** `asuid.www` → the same code.
 3. Back in Azure, click **Validate**, then **Add**. DNS can take minutes to a few hours.
 4. **Certificates → Add certificate → App Service Managed Certificate** for each domain, then
-   **Bind** it (SNI SSL). `https://lunarcy.earth` is live.
+   **Bind** it (SNI SSL). `https://lunarcy.world` is live.
 
 ## Costs
 
